@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://raw.githubusercontent.com/hcig/unity-broker/main/vive-sync.schema.json",
+  "title": "Unity/Vive Synchronization protocol over UDP",
+  "description": "This document defines the data exchange format. The data SHOULD be transferred gzipped",
+  "type": "object",
+  "properties": {
+    "command": {
+      "description": "The command string",
+      "type": "string",
+      "enum": [
+        "get",
+        "set",
+        "update",
+        "echo",
+        "disconnect"
+      ]
+    },
+    "timestamp": {
+      "description": "Timestamp (on milliseconds granularity). Should be created directly before sending.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "params": {
+      "description": "Payload specific to the command",
+      "type": "object"
+    }
+  }
+}
