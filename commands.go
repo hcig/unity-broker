@@ -28,7 +28,7 @@ func ShutdownCommand(com *Command, ch *CommandHandler) error {
 }
 
 func DisconnectCommand(com *Command, ch *CommandHandler) error {
-
+	ch.nm.Pubsub.Unsubscribe(PubSubTopicBasic, com.Source)
 	return nil
 }
 

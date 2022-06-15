@@ -72,7 +72,7 @@ func (ch *CommandHandler) Broadcast(com *Command) {
 }
 
 func (ch *CommandHandler) Respond(com *Command) {
-	log.Printf("Sending: msg to %v\n", com.Source.String())
+	log.Printf("Sending: msg to %v: %s\n", com.Source.String(), com.ToBytes())
 	ch.nm.Pubsub.Unicast(com.Source, com.ToBytes())
 }
 
