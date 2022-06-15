@@ -75,3 +75,7 @@ func (ch *CommandHandler) Respond(com *Command) {
 	log.Printf("Sending: msg to %v\n", com.Source.String())
 	ch.nm.Pubsub.Unicast(com.Source, com.ToBytes())
 }
+
+func (ch *CommandHandler) Persist(com *Command) {
+	ch.nm.Persist.AddEntry(com.Source.String(), com.ToBytes())
+}

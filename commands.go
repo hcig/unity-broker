@@ -64,6 +64,7 @@ func SetCommand(com *Command, ch *CommandHandler) error {
 }
 
 func UpdateCommand(com *Command, ch *CommandHandler) error {
-
+	ch.Persist(com)
+	ch.Broadcast(com)
 	return nil
 }

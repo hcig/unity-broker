@@ -18,6 +18,7 @@ type NetworkMgr struct {
 	clients  map[*net.UDPAddr]chan string
 	Pubsub   *Pubsub
 	Commands *CommandHandler
+	Persist  *PersistenceHandler
 	gz       *GzHandler
 	wg       *sync.WaitGroup
 }
@@ -31,6 +32,7 @@ func NewNetworkMgr() *NetworkMgr {
 	nm := &NetworkMgr{}
 	nm.Pubsub = NewPubsub(nm)
 	nm.Commands = NewCommandHandler(nm)
+	nm.Persist = NewPersistenceHandler()
 	nm.gz = new(GzHandler)
 	nm.gz.Setup()
 	nm.wg = new(sync.WaitGroup)
@@ -55,8 +57,9 @@ func (nm *NetworkMgr) Connect() error {
 }
 
 func (nm *NetworkMgr) Listen() {
-	buffer := make([]byte, 1024)
+	var buffer []byte
 	for !nm.Pubsub.closed {
+		buffer = make([]byte, 1024)
 		n, addr, err := nm.conn.ReadFromUDP(buffer)
 		data := buffer[0 : n-1]
 		if !PlainMode {
