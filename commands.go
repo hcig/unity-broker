@@ -28,7 +28,7 @@ func ShutdownCommand(com *Command, ch *CommandHandler) error {
 }
 
 func DisconnectCommand(com *Command, ch *CommandHandler) error {
-
+	ch.nm.Pubsub.Unsubscribe(PubSubTopicBasic, com.Source)
 	return nil
 }
 
@@ -46,11 +46,12 @@ func GetCommand(com *Command, ch *CommandHandler) error {
 			ch.Respond(com)
 			break
 		case "clients":
-			clients := make([]string, 0, len(ch.nm.clients))
-			for c := range ch.nm.clients {
-				clients = append(clients, c.String())
+			clients := make([]string, 0, len(ch.nm.Pubsub.subs[PubSubTopicBasic]))
+			for c, _ := range ch.nm.Pubsub.subs[PubSubTopicBasic] {
+				clients = append(clients, c)
 			}
 			com.Payload["response"] = clients
+			fmt.Printf("Clients: %s\n", com.ToBytes())
 			ch.Respond(com)
 			break
 		}

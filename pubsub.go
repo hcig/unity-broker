@@ -35,8 +35,9 @@ func (ps *Pubsub) Subscribe(topic string, addr *net.UDPAddr) {
 	if ps.subs[topic] == nil {
 		ps.subs[topic] = make(map[string]*UdpClient)
 	}
-	if ps.subs[topic][addr.String()] == nil {
-		ps.subs[topic][addr.String()] = &UdpClient{
+	s := addr.String()
+	if ps.subs[topic][s] == nil {
+		ps.subs[topic][s] = &UdpClient{
 			Addr: addr,
 			Chan: make(chan []byte),
 		}
@@ -49,8 +50,9 @@ func (ps *Pubsub) Unsubscribe(topic string, addr *net.UDPAddr) {
 	if ps.subs[topic] == nil {
 		return
 	}
-	if ps.subs[topic][addr.String()] != nil {
-		delete(ps.subs[topic], addr.String())
+	s := addr.String()
+	if ps.subs[topic][s] != nil {
+		delete(ps.subs[topic], s)
 	}
 }
 
