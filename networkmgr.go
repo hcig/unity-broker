@@ -15,7 +15,6 @@ var (
 
 type NetworkMgr struct {
 	conn     *net.UDPConn
-	clients  map[*net.UDPAddr]chan string
 	Pubsub   *Pubsub
 	Commands *CommandHandler
 	Persist  *PersistenceHandler
@@ -70,7 +69,7 @@ func (nm *NetworkMgr) Listen() {
 				continue
 			}
 		}
-		log.Printf("Read from Client: %s\n", data)
+		//log.Printf("Read from Client: %s\n", data)
 		cmd, err := ParseCommand(data, addr)
 		if err != nil {
 			// Drop datagrams that are not parseable
@@ -91,9 +90,12 @@ func (nm *NetworkMgr) Publish() {
 	for !nm.Pubsub.closed {
 		for _, clients := range nm.Pubsub.subs {
 			for _, client := range clients {
-				_, err := nm.conn.WriteToUDP(<-client.Chan, client.Addr)
-				if err != nil {
-					log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
+				select {
+				case msg := <-client.Chan:
+					_, err := nm.conn.WriteToUDP(msg, client.Addr)
+					if err != nil {
+						log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
+					}
 				}
 			}
 		}
