@@ -51,6 +51,7 @@ func GetCommand(com *Command, ch *CommandHandler) error {
 				clients = append(clients, c)
 			}
 			com.Payload["response"] = clients
+			fmt.Printf("Clients: %s\n", com.ToBytes())
 			ch.Respond(com)
 			break
 		}

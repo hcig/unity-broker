@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"time"
 )
@@ -72,7 +71,6 @@ func (ch *CommandHandler) Broadcast(com *Command) {
 }
 
 func (ch *CommandHandler) Respond(com *Command) {
-	log.Printf("Sending: msg to %v: %s\n", com.Source.String(), com.ToBytes())
 	ch.nm.Pubsub.Unicast(com.Source, com.ToBytes())
 }
 
