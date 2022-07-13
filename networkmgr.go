@@ -89,11 +89,12 @@ func (nm *NetworkMgr) Publish() {
 			for _, client := range clients {
 				select {
 				case msg := <-client.Chan:
-					log.Printf("Sending: msg to %v: %s\n", client.Addr.String(), msg)
+					log.Printf("Sending to %v\n", client.Addr.String())
 					_, err := nm.conn.WriteToUDP(msg, client.Addr)
 					if err != nil {
 						log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
 					}
+				default:
 				}
 			}
 		}
