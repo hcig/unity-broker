@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"sync"
 )
 
 var (
@@ -14,12 +13,12 @@ var (
 )
 
 type NetworkMgr struct {
-	conn     *net.UDPConn
-	Pubsub   *Pubsub
-	Commands *CommandHandler
-	Persist  *PersistenceHandler
-	gz       *GzHandler
-	wg       *sync.WaitGroup
+	conn              *net.UDPConn
+	Pubsub            *Pubsub
+	Commands          *CommandHandler
+	Persist           *PersistenceHandler
+	ShutdownCompleted chan bool
+	gz                *GzHandler
 }
 
 func NewNetworkMgr() *NetworkMgr {
@@ -32,9 +31,9 @@ func NewNetworkMgr() *NetworkMgr {
 	nm.Pubsub = NewPubsub(nm)
 	nm.Commands = NewCommandHandler(nm)
 	nm.Persist = NewPersistenceHandler()
+	nm.ShutdownCompleted = make(chan bool, 1)
 	nm.gz = new(GzHandler)
 	nm.gz.Setup()
-	nm.wg = new(sync.WaitGroup)
 	return nm
 }
 
@@ -48,10 +47,8 @@ func (nm *NetworkMgr) Connect() error {
 	if err != nil {
 		return err
 	}
-	nm.wg.Add(1)
 	go nm.Listen()
 	go nm.Publish()
-	nm.wg.Wait()
 	return nil
 }
 
@@ -104,7 +101,6 @@ func (nm *NetworkMgr) Publish() {
 }
 
 func (nm *NetworkMgr) Close() error {
-	defer nm.wg.Done()
 	nm.Pubsub.Close()
 	return nm.conn.Close()
 }

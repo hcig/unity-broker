@@ -1,7 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
+// RegisterCommands is the central point to register commands.
 func RegisterCommands() {
 	// Echo cmd: Update timestamp and add original to the payload
 	netmgr.Commands.Register("echo", EchoCommand)
@@ -17,21 +21,27 @@ func RegisterCommands() {
 	netmgr.Commands.Register("update", UpdateCommand)
 }
 
+// EchoCommand is the Command for "echo".
 func EchoCommand(com *Command, ch *CommandHandler) error {
 	com.UpdateTimestamp()
 	ch.Broadcast(com)
 	return nil
 }
 
+// ShutdownCommand is the Command for "shutdown"
 func ShutdownCommand(com *Command, ch *CommandHandler) error {
-	return ch.nm.Close()
+	// os.Exit sends a syscall.SIGINT on exit, that gets worked with in the shutdown routine
+	os.Exit(1)
+	return nil
 }
 
+// DisconnectCommand is the Command for "disconnect".
 func DisconnectCommand(com *Command, ch *CommandHandler) error {
 	ch.nm.Pubsub.Unsubscribe(PubSubTopicBasic, com.Source)
 	return nil
 }
 
+// GetCommand is the Command for "get".
 func GetCommand(com *Command, ch *CommandHandler) error {
 	com.UpdateTimestamp()
 	fmt.Printf("%v\n", com.Payload["params"])
@@ -59,11 +69,13 @@ func GetCommand(com *Command, ch *CommandHandler) error {
 	return nil
 }
 
+// SetCommand is the Command for "set"
 func SetCommand(com *Command, ch *CommandHandler) error {
 
 	return nil
 }
 
+// UpdateCommand is the Command for "update".
 func UpdateCommand(com *Command, ch *CommandHandler) error {
 	ch.Persist(com)
 	ch.Broadcast(com)

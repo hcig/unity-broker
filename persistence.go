@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// PersistenceHandler represents a handler to persist Command to a CSV file.
 type PersistenceHandler struct {
 	active     bool
 	fileHandle *os.File
@@ -16,6 +17,7 @@ type PersistenceHandler struct {
 	writeChan  chan []string
 }
 
+// NewPersistenceHandler creates a new PersistenceHandler and creates persistence files
 func NewPersistenceHandler() *PersistenceHandler {
 	ph := &PersistenceHandler{}
 	enabled, err := strconv.ParseBool(os.Getenv("PERSIST_EVENTS"))
@@ -31,6 +33,7 @@ func NewPersistenceHandler() *PersistenceHandler {
 	return ph
 }
 
+// createFilename assembles a filename for the logs.
 func (ph *PersistenceHandler) createFilename() string {
 	date := time.Now().Format("20060102-150405")
 	pattern := os.Getenv("PERSIST_PATTERN")
@@ -49,6 +52,7 @@ func (ph *PersistenceHandler) createFilename() string {
 	return folder + pattern
 }
 
+// openFile creates a new file and provides a new csv.Writer to it.
 func (ph *PersistenceHandler) openFile() {
 	f, err := os.OpenFile(ph.createFilename(), os.O_CREATE|os.O_WRONLY, 0755)
 	if err != nil {
@@ -59,6 +63,7 @@ func (ph *PersistenceHandler) openFile() {
 	ph.writer.Comma = ';'
 }
 
+// closeFile closes the writers to the persistence file.
 func (ph *PersistenceHandler) closeFile() {
 	close(ph.writeChan)
 	if err := ph.fileHandle.Close(); err != nil {
@@ -66,6 +71,7 @@ func (ph *PersistenceHandler) closeFile() {
 	}
 }
 
+// persistRoutine reads from the persistence channel and writes to the file
 func (ph *PersistenceHandler) persistRoutine() {
 	for buf := range ph.writeChan {
 		if err := ph.writer.Write(buf); err != nil {
@@ -75,6 +81,7 @@ func (ph *PersistenceHandler) persistRoutine() {
 	}
 }
 
+// AddEntry adds a message with an identifier to the persistence channel.
 func (ph *PersistenceHandler) AddEntry(id string, msg []byte) {
 	if ph.active {
 		ph.writeChan <- []string{id, string(msg)}
