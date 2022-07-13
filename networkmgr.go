@@ -83,10 +83,16 @@ func (nm *NetworkMgr) Listen() {
 	}
 }
 
+func (nm *NetworkMgr) safeIterateCb(client *UdpClient) {
+
+}
+
 func (nm *NetworkMgr) Publish() {
 	for !nm.Pubsub.closed {
+		// Try to Lock to wait if no subs here
 		for _, clients := range nm.Pubsub.subs {
-			for _, client := range clients {
+			clients.Range(func(k interface{}, c interface{}) bool {
+				client := c.(*UdpClient)
 				select {
 				case msg := <-client.Chan:
 					log.Printf("Sending to %v\n", client.Addr.String())
@@ -96,7 +102,8 @@ func (nm *NetworkMgr) Publish() {
 					}
 				default:
 				}
-			}
+				return true
+			})
 		}
 	}
 }
