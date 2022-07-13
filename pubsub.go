@@ -19,8 +19,8 @@ type UdpClient struct {
 // Pubsub describes a publish/subscribe broker with different topics to subscribe on.
 type Pubsub struct {
 	nm     *NetworkMgr
-	mu     sync.RWMutex
-	subs   map[string]map[string]*UdpClient
+	mu     sync.Mutex
+	subs   map[string]*sync.Map
 	closed bool
 }
 
@@ -28,7 +28,7 @@ type Pubsub struct {
 func NewPubsub(nm *NetworkMgr) *Pubsub {
 	ps := &Pubsub{}
 	ps.nm = nm
-	ps.subs = make(map[string]map[string]*UdpClient)
+	ps.subs = make(map[string]*sync.Map)
 	return ps
 }
 
@@ -37,14 +37,14 @@ func (ps *Pubsub) Subscribe(topic string, addr *net.UDPAddr) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.subs[topic] == nil {
-		ps.subs[topic] = make(map[string]*UdpClient)
+		ps.subs[topic] = &sync.Map{}
 	}
 	s := addr.String()
-	if ps.subs[topic][s] == nil {
-		ps.subs[topic][s] = &UdpClient{
+	if _, ok := ps.subs[topic].Load(s); !ok {
+		ps.subs[topic].Store(s, &UdpClient{
 			Addr: addr,
 			Chan: make(chan []byte),
-		}
+		})
 	}
 }
 
@@ -56,9 +56,7 @@ func (ps *Pubsub) Unsubscribe(topic string, addr *net.UDPAddr) {
 		return
 	}
 	s := addr.String()
-	if ps.subs[topic][s] != nil {
-		delete(ps.subs[topic], s)
-	}
+	_, _ = ps.subs[topic].LoadAndDelete(s)
 }
 
 // Publish a message to a topic.
@@ -80,11 +78,10 @@ func (ps *Pubsub) PublishWithOptions(topic string, msg []byte, plain bool) {
 		}
 		msg = data
 	}
-	for _, client := range ps.subs[topic] {
-		go func(ch chan []byte) {
-			ch <- msg
-		}(client.Chan)
-	}
+	ps.subs[topic].Range(func(k interface{}, client interface{}) bool {
+		client.(*UdpClient).Chan <- msg
+		return true
+	})
 }
 
 // Unicast sends a message to a client
@@ -106,7 +103,19 @@ func (ps *Pubsub) UnicastWithOptions(addr *net.UDPAddr, msg []byte, plain bool) 
 		}
 		msg = data
 	}
-	ps.subs[PubSubTopicBasic][addr.String()].Chan <- msg
+	client, _ := ps.subs[PubSubTopicBasic].Load(addr.String())
+	client.(*UdpClient).Chan <- msg
+}
+
+func (ps *Pubsub) GetClients() []string {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	var clients []string
+	ps.subs[PubSubTopicBasic].Range(func(k interface{}, c interface{}) bool {
+		clients = append(clients, k.(string))
+		return true
+	})
+	return clients
 }
 
 // Close unsubscribes all clients from all topics.
@@ -116,9 +125,10 @@ func (ps *Pubsub) Close() {
 	if !ps.closed {
 		ps.closed = true
 		for _, clients := range ps.subs {
-			for _, client := range clients {
-				close(client.Chan)
-			}
+			clients.Range(func(k interface{}, c interface{}) bool {
+				close(c.(*UdpClient).Chan)
+				return true
+			})
 		}
 	}
 }

@@ -56,11 +56,7 @@ func GetCommand(com *Command, ch *CommandHandler) error {
 			ch.Respond(com)
 			break
 		case "clients":
-			clients := make([]string, 0, len(ch.nm.Pubsub.subs[PubSubTopicBasic]))
-			for c, _ := range ch.nm.Pubsub.subs[PubSubTopicBasic] {
-				clients = append(clients, c)
-			}
-			com.Payload["response"] = clients
+			com.Payload["response"] = ch.nm.Pubsub.GetClients()
 			ch.Respond(com)
 			break
 		}
