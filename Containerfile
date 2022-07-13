@@ -2,7 +2,7 @@
 FROM docker.io/library/golang:alpine3.16 as build
 WORKDIR /usr/src/app
 ADD . .
-RUN CGO_ENABLED=0  go build -ldflags '-extldflags "-static"' -o /usr/src/app/unity-broker
+RUN CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' -o /usr/src/app/unity-broker
 
 # Minimal resulting container
 FROM scratch
