@@ -57,7 +57,10 @@ func (nm *NetworkMgr) Listen() {
 	for !nm.Pubsub.closed {
 		buffer = make([]byte, 1024)
 		n, addr, err := nm.conn.ReadFromUDP(buffer)
-		data := buffer[0 : n-1]
+		data := make([]byte, 0, n)
+		if n > 0 {
+			data = buffer[0 : n-1]
+		}
 		if !PlainMode {
 			data, err = nm.gz.Unpack(data)
 			if err != nil && err != io.ErrUnexpectedEOF {
@@ -108,7 +111,8 @@ func (nm *NetworkMgr) Publish() {
 	}
 }
 
-func (nm *NetworkMgr) Close() error {
+func (nm *NetworkMgr) Close() {
 	nm.Pubsub.Close()
-	return nm.conn.Close()
+	_ = nm.conn.Close()
+	nm.ShutdownCompleted <- true
 }
