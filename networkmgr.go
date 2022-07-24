@@ -38,7 +38,7 @@ func NewNetworkMgr() *NetworkMgr {
 }
 
 func (nm *NetworkMgr) Connect() error {
-	s, err := net.ResolveUDPAddr("udp4", ":"+os.Getenv("BROKER_PORT"))
+	s, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+os.Getenv("BROKER_PORT"))
 	log.Println("Listening on Port " + os.Getenv("BROKER_PORT"))
 	if err != nil {
 		return err
