@@ -73,7 +73,8 @@ func (ph *PersistenceHandler) closeFile() {
 
 // persistRoutine reads from the persistence channel and writes to the file
 func (ph *PersistenceHandler) persistRoutine() {
-	for buf := range ph.writeChan {
+	for {
+		buf := <-ph.writeChan
 		if err := ph.writer.Write(buf); err != nil {
 			fmt.Println(err)
 		}
