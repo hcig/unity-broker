@@ -115,7 +115,7 @@ func (s *StreamingServer) Connect() error {
 				fmt.Printf("Error: %+v\n", err)
 			}
 			str = strings.Trim(str, "\r\n")
-			fmt.Printf("-- %s --\n", str)
+			//			fmt.Printf("-- %s --\n", str)
 			if isResponse(str) {
 				s.Recv <- parseResponse(str)
 			} else {
@@ -131,7 +131,7 @@ func (s *StreamingServer) Connect() error {
 
 func (s *StreamingServer) Send(cmd string, args ...string) error {
 	cmdPlain := command(cmd, args...)
-	fmt.Printf(">> %s <<\n", cmdPlain)
+	//	fmt.Printf(">> %s <<\n", cmdPlain)
 	_, err := s.Conn.Write(cmdPlain)
 	if err != nil {
 		return err

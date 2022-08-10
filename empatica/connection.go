@@ -43,6 +43,9 @@ func ConnectToFirstE4(server *StreamingServer) error {
 	if err != nil {
 		return err
 	}
+	if len(devices) < 1 {
+		return fmt.Errorf("No Device Available\n")
+	}
 	device = devices[0]
 	connection := server.ConnectDevice(device)
 	if connection.Command != "device_connect" {
