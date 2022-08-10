@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"viveSyncBroker/persistence"
 )
 
 var (
@@ -16,7 +17,7 @@ type NetworkMgr struct {
 	conn              *net.UDPConn
 	Pubsub            *Pubsub
 	Commands          *CommandHandler
-	Persist           *PersistenceHandler
+	Persist           *persistence.PersistenceHandler
 	ShutdownCompleted chan bool
 	gz                *GzHandler
 }
@@ -30,7 +31,7 @@ func NewNetworkMgr() *NetworkMgr {
 	nm := &NetworkMgr{}
 	nm.Pubsub = NewPubsub(nm)
 	nm.Commands = NewCommandHandler(nm)
-	nm.Persist = NewPersistenceHandler()
+	nm.Persist = persistence.NewPersistenceHandler()
 	nm.ShutdownCompleted = make(chan bool, 1)
 	nm.gz = new(GzHandler)
 	nm.gz.Setup()
@@ -98,7 +99,7 @@ func (nm *NetworkMgr) Publish() {
 				client := c.(*UdpClient)
 				select {
 				case msg := <-client.Chan:
-					log.Printf("Sending to %v\n", client.Addr.String())
+					//log.Printf("Sending to %v\n", client.Addr.String())
 					_, err := nm.conn.WriteToUDP(msg, client.Addr)
 					if err != nil {
 						log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
