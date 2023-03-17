@@ -19,6 +19,8 @@ func RegisterCommands() {
 	netmgr.Commands.Register("set", SetCommand)
 	// Set broker information and general values
 	netmgr.Commands.Register("update", UpdateCommand)
+	// Send a message to every listening component
+	netmgr.Commands.Register("msg", MsgCommand)
 }
 
 // EchoCommand is the Command for "echo".
@@ -66,12 +68,20 @@ func GetCommand(com *Command, ch *CommandHandler) error {
 
 // SetCommand is the Command for "set"
 func SetCommand(com *Command, ch *CommandHandler) error {
-
+	ch.Persist(com)
+	ch.Broadcast(com)
 	return nil
 }
 
 // UpdateCommand is the Command for "update".
 func UpdateCommand(com *Command, ch *CommandHandler) error {
+	ch.Persist(com)
+	ch.Broadcast(com)
+	return nil
+}
+
+// MsgCommand is the Command for "send".
+func MsgCommand(com *Command, ch *CommandHandler) error {
 	ch.Persist(com)
 	ch.Broadcast(com)
 	return nil

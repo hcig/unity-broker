@@ -70,7 +70,6 @@ func (nm *NetworkMgr) Listen() {
 				continue
 			}
 		}
-		//log.Printf("Read from Client: %s\n", data)
 		cmd, err := ParseCommand(data, addr)
 		if err != nil {
 			// Drop datagrams that are not parseable

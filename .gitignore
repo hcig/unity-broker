@@ -1,3 +1,3 @@
 viveSyncBroker
 app
-output/*.csv
+output/**/*.csv
