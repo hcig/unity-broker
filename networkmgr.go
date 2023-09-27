@@ -17,7 +17,7 @@ type NetworkMgr struct {
 	conn              *net.UDPConn
 	Pubsub            *Pubsub
 	Commands          *CommandHandler
-	Persist           *persistence.PersistenceHandler
+	Persist           *persistence.Handler
 	ShutdownCompleted chan bool
 	gz                *GzHandler
 }
@@ -31,7 +31,7 @@ func NewNetworkMgr() *NetworkMgr {
 	nm := &NetworkMgr{}
 	nm.Pubsub = NewPubsub(nm)
 	nm.Commands = NewCommandHandler(nm)
-	nm.Persist = persistence.NewPersistenceHandler()
+	nm.Persist = persistence.NewHandler()
 	nm.ShutdownCompleted = make(chan bool, 1)
 	nm.gz = new(GzHandler)
 	nm.gz.Setup()

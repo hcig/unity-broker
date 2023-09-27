@@ -1,0 +1,93 @@
+syntax = "proto3";
+package sync_broker;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "broker/messages";
+
+message CommandError {
+  string message = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string reason = 3;
+}
+message Command {
+  IpEndpoint source = 1;
+  CommandType command = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  Payload payload = 4;
+}
+message Payload {
+  google.protobuf.Timestamp origTimestamp = 1;
+  oneof PayloadTypes {
+    bool none = 2;
+    GetPayload get = 3;
+    SetPayload set = 4;
+    UpdatePayload update = 5;
+    MsgPayload msg = 6;
+  }
+  repeated string response = 7;
+}
+message GetPayload {
+  repeated string data = 1;
+}
+message SetPayload {
+  map<string, string> data = 1;
+}
+message UpdatePayload {
+  enum Type {
+    Delta = 0;
+    Absolute = 1;
+  }
+  string name = 1;
+  Type type = 2;
+  oneof Data {
+    TransformData transform = 3;
+    TriggerData trigger = 4;
+    TrackerData tracker = 5;
+  }
+}
+message TransformData {
+  Vector2 position = 1;
+  Vector3 rotation = 2;
+  Vector3 scale = 3;
+}
+message TriggerData {
+  bool active = 1;
+  string other = 2;
+}
+message TrackerData {
+  Vector2 direction = 1;
+}
+message Vector2 {
+  double x = 1;
+  double y = 2;
+}
+message Vector3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+message MsgPayload {
+  string method = 1;
+  string receiver = 2;
+  google.protobuf.Value value = 3;
+}
+enum CommandType {
+  EchoCommand = 0;
+  DisconnectCommand = 1;
+  GetCommand = 2;
+  SetCommand = 3;
+  UpdateCommand = 4;
+  MsgCommand = 5;
+}
+message IpEndpoint {
+  message V6Type {
+    repeated fixed64 v6IpAddress = 1 [packed = true];
+  }
+  oneof IpTypes {
+    fixed32 v4Ip = 1;
+    V6Type v6Ip = 2;
+  }
+  uint32 port = 3;
+}
