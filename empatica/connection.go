@@ -12,7 +12,7 @@ var (
 	device string
 )
 
-func Setup(ph *persistence.PersistenceHandler) {
+func Setup(ph *persistence.Handler) {
 	port, err := strconv.Atoi(os.Getenv("E4_SERVER_PORT"))
 	if err != nil {
 		fmt.Printf("Error: %+v\n", err)

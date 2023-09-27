@@ -1,3 +1,5 @@
 viveSyncBroker
 app
 output/**/*.csv
+# Ignore compiled protocol buffers
+pb
