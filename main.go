@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"viveSyncBroker/empatica"
 )
 
 var (
@@ -20,9 +19,6 @@ func main() {
 	}
 	setupLogger()
 	netmgr = NewNetworkMgr()
-	if os.Getenv("E4_ACTIVE") == "true" {
-		empatica.Setup(netmgr.Persist)
-	}
 	RegisterCommands()
 	if err := netmgr.Connect(); err != nil {
 		log.Fatal(err)

@@ -1,10 +1,23 @@
 syntax = "proto3";
-package sync_broker;
+
+
+option go_package = "broker/messages";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 
-option go_package = "broker/messages";
+package sync_broker;
+
+service Broker {
+
+  // Single Command
+  rpc SendCommand(Command) returns (Ack) {}
+
+  rpc RequestCommand(Command) returns (Command) {}
+
+  rpc StreamUpdates(stream Command) returns (Ack) {}
+
+}
 
 // CommandError is an error representation
 message CommandError {
@@ -23,21 +36,14 @@ enum CommandType {
   MsgCommand = 5;
 }
 
-// IPEndpoint represents address and port
-message IpEndpoint {
-  message V6Type {
-    repeated fixed64 v6IpAddress = 1 [packed = true];
-  }
-  oneof IpTypes {
-    fixed32 v4Ip = 1;
-    V6Type v6Ip = 2;
-  }
-  uint32 port = 3;
+message Ack {
+  string source = 1;
+  CommandType command = 2;
 }
 
 // Command is the representation of a command
 message Command {
-  IpEndpoint source = 1;
+  string source = 1;
   CommandType command = 2;
   google.protobuf.Timestamp timestamp = 3;
   Payload payload = 4;

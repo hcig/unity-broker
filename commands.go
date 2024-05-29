@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"viveSyncBroker/pb/broker/messages"
+	"viveSyncBroker/pb/proto"
 )
 
 // RegisterCommands is the central point to register commands.
@@ -40,7 +40,7 @@ func ShutdownCommand(com *messages.Command, ch *CommandHandler) error {
 
 // DisconnectCommand is the Command for "disconnect".
 func DisconnectCommand(com *messages.Command, ch *CommandHandler) error {
-	ch.nm.Pubsub.Unsubscribe(PubSubTopicBasic, FromProtobufEndpoint(com.Source))
+	ch.nm.Pubsub.Unsubscribe(PubSubTopicBasic, com.Source)
 	return nil
 }
 

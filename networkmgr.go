@@ -1,11 +1,12 @@
 package main
 
 import (
-	"io"
+	"google.golang.org/grpc"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"viveSyncBroker/pb/proto"
 	"viveSyncBroker/persistence"
 )
 
@@ -14,10 +15,10 @@ var (
 )
 
 type NetworkMgr struct {
-	conn              *net.UDPConn
+	conn              net.Listener
 	Pubsub            *Pubsub
 	Commands          *CommandHandler
-	Persist           *persistence.Handler
+	Persist           persistence.Handler
 	ShutdownCompleted chan bool
 	gz                *GzHandler
 }
@@ -31,7 +32,7 @@ func NewNetworkMgr() *NetworkMgr {
 	nm := &NetworkMgr{}
 	nm.Pubsub = NewPubsub(nm)
 	nm.Commands = NewCommandHandler(nm)
-	nm.Persist = persistence.NewHandler()
+	nm.Persist = persistence.Factory()
 	nm.ShutdownCompleted = make(chan bool, 1)
 	nm.gz = new(GzHandler)
 	nm.gz.Setup()
@@ -39,50 +40,52 @@ func NewNetworkMgr() *NetworkMgr {
 }
 
 func (nm *NetworkMgr) Connect() error {
-	s, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+os.Getenv("BROKER_PORT"))
+	var err error
 	log.Println("Listening on Port " + os.Getenv("BROKER_PORT"))
+	nm.conn, err = net.Listen("tcp4", "0.0.0.0:"+os.Getenv("BROKER_PORT"))
 	if err != nil {
 		return err
 	}
-	nm.conn, err = net.ListenUDP("udp4", s)
-	if err != nil {
-		return err
-	}
-	go nm.Listen()
-	go nm.Publish()
-	return nil
+	var opts []grpc.ServerOption
+	grpcServer := grpc.NewServer(opts...)
+	messages.RegisterBrokerServer(grpcServer, NewBrokerServer())
+	//go nm.Listen()
+	//go nm.Publish()
+	return grpcServer.Serve(nm.conn)
 }
 
 func (nm *NetworkMgr) Listen() {
-	var buffer []byte
+	//	var buffer []byte
 	for !nm.Pubsub.closed {
-		buffer = make([]byte, 1024)
-		n, addr, err := nm.conn.ReadFromUDP(buffer)
-		data := make([]byte, 0, n)
-		if n > 0 {
-			data = buffer[0 : n-1]
-		}
-		if !PlainMode {
-			data, err = nm.gz.Unpack(data)
-			if err != nil && err != io.ErrUnexpectedEOF {
+		/*
+			buffer = make([]byte, 1024)
+			n, addr, err := nm.conn.ReadFromUDP(buffer)
+			data := make([]byte, 0, n)
+			if n > 0 {
+				data = buffer[0 : n-1]
+			}
+			if !PlainMode {
+				data, err = nm.gz.Unpack(data)
+				if err != nil && err != io.ErrUnexpectedEOF {
+					// Drop datagrams that are not parseable
+					log.Println(err)
+					continue
+				}
+			}
+			cmd, err := ParseCommand(data, addr)
+			if err != nil {
 				// Drop datagrams that are not parseable
 				log.Println(err)
 				continue
 			}
-		}
-		cmd, err := ParseCommand(data, addr)
-		if err != nil {
-			// Drop datagrams that are not parseable
-			log.Println(err)
-			continue
-		}
 
-		// If new client is joining, add and subscribe
-		nm.Pubsub.Subscribe(PubSubTopicBasic, addr)
+			// If new client is joining, add and subscribe
+			nm.Pubsub.Subscribe(PubSubTopicBasic, addr)
 
-		if err = nm.Commands.Handle(cmd); err != nil {
-			log.Fatalln(err)
-		}
+			if err = nm.Commands.Handle(cmd); err != nil {
+				log.Fatalln(err)
+			}
+		*/
 	}
 }
 
@@ -95,14 +98,16 @@ func (nm *NetworkMgr) Publish() {
 		// Try to Lock to wait if no subs here
 		for _, clients := range nm.Pubsub.subs {
 			clients.Range(func(k interface{}, c interface{}) bool {
-				client := c.(*UdpClient)
+				//				client := c.(*UdpClient)
 				select {
-				case msg := <-client.Chan:
-					//log.Printf("Sending to %v\n", client.Addr.String())
-					_, err := nm.conn.WriteToUDP(msg, client.Addr)
-					if err != nil {
-						log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
-					}
+				/*
+					case msg := <-client.Chan:
+						//log.Printf("Sending to %v\n", client.Addr.String())
+						_, err := nm.conn.WriteToUDP(msg, client.Addr)
+						if err != nil {
+							log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
+						}
+				*/
 				default:
 				}
 				return true

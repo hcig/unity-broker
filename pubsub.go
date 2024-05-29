@@ -49,14 +49,13 @@ func (ps *Pubsub) Subscribe(topic string, addr *net.UDPAddr) {
 }
 
 // Unsubscribe a client from a topic.
-func (ps *Pubsub) Unsubscribe(topic string, addr *net.UDPAddr) {
+func (ps *Pubsub) Unsubscribe(topic string, client string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.subs[topic] == nil {
 		return
 	}
-	s := addr.String()
-	_, _ = ps.subs[topic].LoadAndDelete(s)
+	_, _ = ps.subs[topic].LoadAndDelete(client)
 }
 
 // Publish a message to a topic.
@@ -85,12 +84,12 @@ func (ps *Pubsub) PublishWithOptions(topic string, msg []byte, plain bool) {
 }
 
 // Unicast sends a message to a client
-func (ps *Pubsub) Unicast(addr *net.UDPAddr, msg []byte) {
-	ps.UnicastWithOptions(addr, msg, PlainMode)
+func (ps *Pubsub) Unicast(client string, msg []byte) {
+	ps.UnicastWithOptions(client, msg, PlainMode)
 }
 
 // UnicastWithOptions sends a message to a client with a config if encryption should be used.
-func (ps *Pubsub) UnicastWithOptions(addr *net.UDPAddr, msg []byte, plain bool) {
+func (ps *Pubsub) UnicastWithOptions(clientName string, msg []byte, plain bool) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {
@@ -103,7 +102,7 @@ func (ps *Pubsub) UnicastWithOptions(addr *net.UDPAddr, msg []byte, plain bool) 
 		}
 		msg = data
 	}
-	client, _ := ps.subs[PubSubTopicBasic].Load(addr.String())
+	client, _ := ps.subs[PubSubTopicBasic].Load(clientName)
 	client.(*UdpClient).Chan <- msg
 }
 
