@@ -13,7 +13,7 @@ type Handler interface {
 	SetParticipant(participant int) error
 	AddParticipantData(data any) error
 
-	LastTrial(participant int) (int, error)
+	LastTrial() (int, error)
 	SetTrial(pass int) error
 	AddTrialData(data any) error
 

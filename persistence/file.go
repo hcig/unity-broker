@@ -94,9 +94,9 @@ func (ph *FileHandler) SetTrial(pass int) error {
 	return ph.restart()
 }
 
-func (ph *FileHandler) LastTrial(participant int) (int, error) {
+func (ph *FileHandler) LastTrial() (int, error) {
 	trialSet := lib.NewSet[int]()
-	files, err := filepath.Glob(os.Getenv("PERSIST_FOLDER") + fmt.Sprintf("/%d_*.csv", participant))
+	files, err := filepath.Glob(os.Getenv("PERSIST_FOLDER") + fmt.Sprintf("/%d_*.csv", ph.participantNum))
 	if err != nil {
 		return 0, err
 	}

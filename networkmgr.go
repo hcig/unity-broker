@@ -52,13 +52,14 @@ func (nm *NetworkMgr) Connect() error {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
 	messages.RegisterBrokerServer(grpcServer, NewBrokerServer(nm))
-	err = grpcServer.Serve(nm.conn)
+	go grpcServer.Serve(nm.conn)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", HomeHandler)
 	r.HandleFunc("/participants", ParticipantsHandler)
 	r.HandleFunc("/trials", TrialsHandler)
 
+	log.Println("REST: Listening on Port " + os.Getenv("REST_PORT"))
 	return http.ListenAndServe("0.0.0.0:"+os.Getenv("REST_PORT"), r)
 }
 

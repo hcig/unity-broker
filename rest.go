@@ -57,7 +57,11 @@ func ParticipantsHandler(writer http.ResponseWriter, request *http.Request) {
 			fmt.Println(err)
 			writer.WriteHeader(http.StatusInternalServerError)
 		}
-
+		if err = netmgr.Persist.AddParticipantData(data); err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		writer.WriteHeader(http.StatusCreated)
 	default:
 		_, _ = writer.Write([]byte("Method not implemented"))
 		writer.WriteHeader(http.StatusNotImplemented)
@@ -67,4 +71,50 @@ func ParticipantsHandler(writer http.ResponseWriter, request *http.Request) {
 
 func TrialsHandler(writer http.ResponseWriter, request *http.Request) {
 
+	switch request.Method {
+	case http.MethodGet: // Get current number
+		trial, err := netmgr.Persist.LastTrial()
+		if err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		fmt.Println(writer.Write([]byte(strconv.Itoa(trial))))
+	case http.MethodPost: // Set current trial number
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		trial, err := strconv.Atoi(string(body))
+		if err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		err = netmgr.Persist.SetTrial(trial)
+		if err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		writer.WriteHeader(http.StatusOK)
+	case http.MethodPatch: // Add participant data set
+		data := make(map[string]any)
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		if err = json.Unmarshal(body, &data); err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		if err = netmgr.Persist.AddTrialData(data); err != nil {
+			fmt.Println(err)
+			writer.WriteHeader(http.StatusInternalServerError)
+		}
+		writer.WriteHeader(http.StatusCreated)
+	default:
+		_, _ = writer.Write([]byte("Method not implemented"))
+		writer.WriteHeader(http.StatusNotImplemented)
+		return
+	}
 }

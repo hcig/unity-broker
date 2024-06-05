@@ -87,7 +87,7 @@ func (h *TimescaleHandler) Init() error {
 	if h.participant, err = h.LastParticipant(); err != nil {
 		return err
 	}
-	if h.trial, err = h.LastTrial(h.participant); err != nil {
+	if h.trial, err = h.LastTrial(); err != nil {
 		return err
 	}
 	h.writeChan = make(chan JsonEvent)
@@ -161,9 +161,9 @@ func (h *TimescaleHandler) AddParticipantData(data any) error {
 	return err
 }
 
-func (h *TimescaleHandler) LastTrial(participant int) (int, error) {
+func (h *TimescaleHandler) LastTrial() (int, error) {
 	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s WHERE %s_id = $1 GROUP BY id;`, h.tbl(DbTrialTableName), DbParticipantTableName)
-	row := h.connection.QueryRow(h.ctx, qry, participant)
+	row := h.connection.QueryRow(h.ctx, qry, h.participant)
 	err := row.Scan(&h.trial)
 	return h.trial, err
 }
