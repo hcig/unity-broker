@@ -52,6 +52,11 @@ func (ph *FileHandler) SetPrefix(prefix string) error {
 	return ph.restart()
 }
 
+// AddParticipantData adds data for a participant
+func (ph *FileHandler) AddParticipantData(data any) error {
+	return fmt.Errorf("Not implemented")
+}
+
 // SetParticipant sets the participant number and restarts the file persistor
 func (ph *FileHandler) SetParticipant(participant int) error {
 	ph.participantNum = participant
@@ -76,6 +81,11 @@ func (ph *FileHandler) LastParticipant() (int, error) {
 		return 0, nil
 	}
 	return *lastParticipant, nil
+}
+
+// AddTrialData adds data for a trial
+func (ph *FileHandler) AddTrialData(data any) error {
+	return fmt.Errorf("Not implemented")
 }
 
 // SetTrial sets the pass number and restarts the file persistor

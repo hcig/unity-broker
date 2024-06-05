@@ -128,6 +128,13 @@ func (h *TimescaleHandler) SetPrefix(prefix string) error {
 	return nil
 }
 
+func (h *TimescaleHandler) LastParticipant() (int, error) {
+	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s GROUP BY id;`, h.tbl(DbParticipantTableName))
+	row := h.connection.QueryRow(h.ctx, qry)
+	err := row.Scan(&h.participant)
+	return h.participant, err
+}
+
 func (h *TimescaleHandler) SetParticipant(participant int) error {
 	h.participant = participant
 	_, err := h.connection.Exec(h.ctx,
@@ -141,12 +148,24 @@ func (h *TimescaleHandler) SetParticipant(participant int) error {
 	return err
 }
 
-func (h *TimescaleHandler) LastParticipant() (int, error) {
-	lastParticipant := 0
-	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s GROUP BY id;`, h.tbl(DbParticipantTableName))
-	row := h.connection.QueryRow(h.ctx, qry)
-	err := row.Scan(&lastParticipant)
-	return lastParticipant, err
+func (h *TimescaleHandler) AddParticipantData(data any) error {
+	qry := fmt.Sprintf(
+		"UPDATE %s SET data = data || '[$1]'::jsonb WHERE id = $2;",
+		h.tbl(DbParticipantTableName),
+	)
+	js, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = h.connection.Exec(h.ctx, qry, js, h.participant)
+	return err
+}
+
+func (h *TimescaleHandler) LastTrial(participant int) (int, error) {
+	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s WHERE %s_id = $1 GROUP BY id;`, h.tbl(DbTrialTableName), DbParticipantTableName)
+	row := h.connection.QueryRow(h.ctx, qry, participant)
+	err := row.Scan(&h.trial)
+	return h.trial, err
 }
 
 func (h *TimescaleHandler) SetTrial(trial int) error {
@@ -164,12 +183,18 @@ func (h *TimescaleHandler) SetTrial(trial int) error {
 	return err
 }
 
-func (h *TimescaleHandler) LastTrial(participant int) (int, error) {
-	lastTrial := 0
-	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s WHERE %s_id = $1 GROUP BY id;`, h.tbl(DbTrialTableName), DbParticipantTableName)
-	row := h.connection.QueryRow(h.ctx, qry, participant)
-	err := row.Scan(&lastTrial)
-	return lastTrial, err
+func (h *TimescaleHandler) AddTrialData(data any) error {
+	qry := fmt.Sprintf(
+		"UPDATE %s SET data = data || '[$1]'::jsonb WHERE %s_id = $2 AND id = $3;",
+		h.tbl(DbTrialTableName),
+		DbParticipantTableName,
+	)
+	js, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = h.connection.Exec(h.ctx, qry, js, h.participant, h.trial)
+	return err
 }
 
 // persistRoutine reads from the persistence channel and writes to the file

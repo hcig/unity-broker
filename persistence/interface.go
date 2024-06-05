@@ -8,12 +8,16 @@ import (
 
 type Handler interface {
 	SetPrefix(prefix string) error
-	SetParticipant(participant int) error
-	SetTrial(pass int) error
-	AddEntry(id string, msg []byte) error
 
 	LastParticipant() (int, error)
+	SetParticipant(participant int) error
+	AddParticipantData(data any) error
+
 	LastTrial(participant int) (int, error)
+	SetTrial(pass int) error
+	AddTrialData(data any) error
+
+	AddEntry(id string, msg []byte) error
 
 	Init() error
 	Close() error
