@@ -1,9 +1,11 @@
 package main
 
 import (
+	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"viveSyncBroker/pb/proto"
@@ -41,20 +43,26 @@ func NewNetworkMgr() *NetworkMgr {
 
 func (nm *NetworkMgr) Connect() error {
 	var err error
-	log.Println("Listening on Port " + os.Getenv("BROKER_PORT"))
+	// gRPC Connection
+	log.Println("gRPC: Listening on Port " + os.Getenv("BROKER_PORT"))
 	nm.conn, err = net.Listen("tcp4", "0.0.0.0:"+os.Getenv("BROKER_PORT"))
 	if err != nil {
 		return err
 	}
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
-	messages.RegisterBrokerServer(grpcServer, NewBrokerServer())
-	//go nm.Listen()
-	//go nm.Publish()
-	return grpcServer.Serve(nm.conn)
+	messages.RegisterBrokerServer(grpcServer, NewBrokerServer(nm))
+	err = grpcServer.Serve(nm.conn)
+
+	r := mux.NewRouter()
+	r.HandleFunc("/", HomeHandler)
+	r.HandleFunc("/participants", ParticipantsHandler)
+	r.HandleFunc("/trials", TrialsHandler)
+
+	return http.ListenAndServe("0.0.0.0:"+os.Getenv("REST_PORT"), r)
 }
 
-func (nm *NetworkMgr) Listen() {
+func (nm *NetworkMgr) ListenRest() {
 	//	var buffer []byte
 	for !nm.Pubsub.closed {
 		/*

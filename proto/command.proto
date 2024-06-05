@@ -59,7 +59,7 @@ message Payload {
   }
   message UpdatePayload {
     message TransformData {
-      Vector2 position = 1;
+      Vector3 position = 1;
       Vector3 rotation = 2;
       Vector3 scale = 3;
     }

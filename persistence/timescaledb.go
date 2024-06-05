@@ -83,6 +83,13 @@ func (h *TimescaleHandler) Init() error {
 	if err = h.verifyTables(); err != nil {
 		return err
 	}
+	// Set latest participant and trial
+	if h.participant, err = h.LastParticipant(); err != nil {
+		return err
+	}
+	if h.trial, err = h.LastTrial(h.participant); err != nil {
+		return err
+	}
 	h.writeChan = make(chan JsonEvent)
 	go h.persistRoutine()
 	return nil
@@ -135,8 +142,11 @@ func (h *TimescaleHandler) SetParticipant(participant int) error {
 }
 
 func (h *TimescaleHandler) LastParticipant() (int, error) {
-
-	return 0, nil
+	lastParticipant := 0
+	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s GROUP BY id;`, h.tbl(DbParticipantTableName))
+	row := h.connection.QueryRow(h.ctx, qry)
+	err := row.Scan(&lastParticipant)
+	return lastParticipant, err
 }
 
 func (h *TimescaleHandler) SetTrial(trial int) error {
@@ -155,8 +165,11 @@ func (h *TimescaleHandler) SetTrial(trial int) error {
 }
 
 func (h *TimescaleHandler) LastTrial(participant int) (int, error) {
-
-	return 0, nil
+	lastTrial := 0
+	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s WHERE %s_id = $1 GROUP BY id;`, h.tbl(DbTrialTableName), DbParticipantTableName)
+	row := h.connection.QueryRow(h.ctx, qry, participant)
+	err := row.Scan(&lastTrial)
+	return lastTrial, err
 }
 
 // persistRoutine reads from the persistence channel and writes to the file
@@ -179,7 +192,7 @@ func (h *TimescaleHandler) persistRoutine() {
 			h.trial,
 			buf,
 		); err != nil {
-			fmt.Println(err)
+			fmt.Printf("Error on Part %d, Trial %d: %v\n", h.participant, h.trial, err)
 		}
 	}
 }

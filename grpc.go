@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -10,12 +11,15 @@ import (
 	"viveSyncBroker/pb/proto"
 )
 
-// BrokerServer
+// BrokerServer is the central gRPC broker server
 type BrokerServer struct {
+	nm *NetworkMgr
 }
 
-func NewBrokerServer() *BrokerServer {
-	return &BrokerServer{}
+func NewBrokerServer(nm *NetworkMgr) *BrokerServer {
+	return &BrokerServer{
+		nm: nm,
+	}
 }
 
 func (s *BrokerServer) SendCommand(ctx context.Context, cmd *messages.Command) (*messages.Ack, error) {
@@ -26,15 +30,25 @@ func (s *BrokerServer) SendCommand(ctx context.Context, cmd *messages.Command) (
 		Command: cmd.Command,
 	}, nil
 }
+
 func (s *BrokerServer) RequestCommand(context.Context, *messages.Command) (*messages.Command, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestCommand not implemented")
 }
+
 func (s *BrokerServer) StreamUpdates(server messages.Broker_StreamUpdatesServer) error {
 	for {
-		server.Recv()
-
+		cmd, err := server.Recv()
+		if err != nil {
+			return err
+		}
+		b, err := json.Marshal(cmd)
+		if err != nil {
+			return err
+		}
+		if err = s.nm.Persist.AddEntry(cmd.Source, b); err != nil {
+			return err
+		}
 	}
-	return status.Errorf(codes.Unimplemented, "method StreamUpdates not implemented")
 }
 
 func printContextInternals(ctx interface{}, inner bool) {
