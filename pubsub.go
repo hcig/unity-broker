@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"google.golang.org/protobuf/proto"
 	"net"
 	"sync"
 )
@@ -10,18 +10,19 @@ const (
 	PubSubTopicBasic = "basic"
 )
 
-// UdpClient describes a client by its address and a channel for its mesages
-type UdpClient struct {
-	Addr *net.UDPAddr
-	Chan chan []byte
+// RemoteClient describes a client by its address and a channel for its mesages
+type RemoteClient struct {
+	Client net.Conn
+	Chan   chan proto.Message
 }
 
 // Pubsub describes a publish/subscribe broker with different topics to subscribe on.
 type Pubsub struct {
-	nm     *NetworkMgr
-	mu     sync.Mutex
-	subs   map[string]*sync.Map
-	closed bool
+	nm          *NetworkMgr
+	mu          sync.Mutex
+	subs        map[string]*sync.Map
+	closed      bool
+	HasMessages chan bool
 }
 
 // NewPubsub creates a new Pubsub.
@@ -29,21 +30,22 @@ func NewPubsub(nm *NetworkMgr) *Pubsub {
 	ps := &Pubsub{}
 	ps.nm = nm
 	ps.subs = make(map[string]*sync.Map)
+	ps.HasMessages = make(chan bool, 16)
 	return ps
 }
 
 // Subscribe a client to a topic.
-func (ps *Pubsub) Subscribe(topic string, addr *net.UDPAddr) {
+func (ps *Pubsub) Subscribe(topic string, client net.Conn) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.subs[topic] == nil {
 		ps.subs[topic] = &sync.Map{}
 	}
-	s := addr.String()
+	s := client.RemoteAddr().String()
 	if _, ok := ps.subs[topic].Load(s); !ok {
-		ps.subs[topic].Store(s, &UdpClient{
-			Addr: addr,
-			Chan: make(chan []byte),
+		ps.subs[topic].Store(s, &RemoteClient{
+			Client: client,
+			Chan:   make(chan proto.Message, 8),
 		})
 	}
 }
@@ -59,51 +61,39 @@ func (ps *Pubsub) Unsubscribe(topic string, client string) {
 }
 
 // Publish a message to a topic.
-func (ps *Pubsub) Publish(topic string, msg []byte) {
+func (ps *Pubsub) Publish(topic string, msg proto.Message) {
 	ps.PublishWithOptions(topic, msg, PlainMode)
 }
 
 // PublishWithOptions publishes s message to a topic with a config if encryption should be used.
-func (ps *Pubsub) PublishWithOptions(topic string, msg []byte, plain bool) {
+func (ps *Pubsub) PublishWithOptions(topic string, msg proto.Message, plain bool) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {
 		return
 	}
-	if !plain {
-		data, err := ps.nm.gz.Pack(msg)
-		if err != nil {
-			log.Printf("ERROR compressing data: %v", err)
-		}
-		msg = data
-	}
 	ps.subs[topic].Range(func(k interface{}, client interface{}) bool {
-		client.(*UdpClient).Chan <- msg
+		client.(*RemoteClient).Chan <- msg
+		ps.HasMessages <- true
 		return true
 	})
 }
 
 // Unicast sends a message to a client
-func (ps *Pubsub) Unicast(client string, msg []byte) {
+func (ps *Pubsub) Unicast(client string, msg proto.Message) {
 	ps.UnicastWithOptions(client, msg, PlainMode)
 }
 
 // UnicastWithOptions sends a message to a client with a config if encryption should be used.
-func (ps *Pubsub) UnicastWithOptions(clientName string, msg []byte, plain bool) {
+func (ps *Pubsub) UnicastWithOptions(clientName string, msg proto.Message, plain bool) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {
 		return
 	}
-	if !plain {
-		data, err := ps.nm.gz.Pack(msg)
-		if err != nil {
-			log.Printf("ERROR compressing data: %v", err)
-		}
-		msg = data
-	}
 	client, _ := ps.subs[PubSubTopicBasic].Load(clientName)
-	client.(*UdpClient).Chan <- msg
+	client.(*RemoteClient).Chan <- msg
+	ps.HasMessages <- true
 }
 
 func (ps *Pubsub) GetClients() []string {
@@ -125,7 +115,7 @@ func (ps *Pubsub) Close() {
 		ps.closed = true
 		for _, clients := range ps.subs {
 			clients.Range(func(k interface{}, c interface{}) bool {
-				close(c.(*UdpClient).Chan)
+				close(c.(*RemoteClient).Chan)
 				return true
 			})
 		}

@@ -1,8 +1,10 @@
 package persistence
 
 import (
-	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"google.golang.org/protobuf/proto"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,8 +23,7 @@ type FileHandler struct {
 	participantNum int
 	passNum        int
 	fileHandle     *os.File
-	writer         *csv.Writer
-	writeChan      chan []string
+	writeChan      chan proto.Message
 }
 
 // NewFileHandler creates a new PersistenceHandler and creates persistence files
@@ -37,7 +38,7 @@ func (ph *FileHandler) Init() error {
 	if err := ph.openFile(); err != nil {
 		return err
 	}
-	ph.writeChan = make(chan []string)
+	ph.writeChan = make(chan proto.Message)
 	go ph.persistRoutine()
 	return nil
 }
@@ -65,7 +66,7 @@ func (ph *FileHandler) SetParticipant(participant int) error {
 
 func (ph *FileHandler) LastParticipant() (int, error) {
 	participantSet := lib.NewSet[int]()
-	files, err := filepath.Glob(os.Getenv("PERSIST_FOLDER") + "/*.csv")
+	files, err := filepath.Glob(os.Getenv("PERSIST_FOLDER") + "/*.txt")
 	if err != nil {
 		return 0, err
 	}
@@ -96,7 +97,7 @@ func (ph *FileHandler) SetTrial(pass int) error {
 
 func (ph *FileHandler) LastTrial() (int, error) {
 	trialSet := lib.NewSet[int]()
-	files, err := filepath.Glob(os.Getenv("PERSIST_FOLDER") + fmt.Sprintf("/%d_*.csv", ph.participantNum))
+	files, err := filepath.Glob(os.Getenv("PERSIST_FOLDER") + fmt.Sprintf("/%d_*.txt", ph.participantNum))
 	if err != nil {
 		return 0, err
 	}
@@ -147,19 +148,14 @@ func (ph *FileHandler) createFilename() string {
 	if folder != "" {
 		folder += string(filepath.Separator)
 	}
-	return folder + strings.Join(pattern, "_") + ".csv"
+	return folder + strings.Join(pattern, "_") + ".txt"
 }
 
 // openFile creates a new file and provides a new csv.Writer to it.
 func (ph *FileHandler) openFile() error {
-	f, err := os.OpenFile(ph.createFilename(), os.O_CREATE|os.O_WRONLY, 0755)
-	if err != nil {
-		return err
-	}
-	ph.fileHandle = f
-	ph.writer = csv.NewWriter(ph.fileHandle)
-	ph.writer.Comma = ';'
-	return nil
+	var err error
+	ph.fileHandle, err = os.OpenFile(ph.createFilename(), os.O_CREATE|os.O_WRONLY, 0755)
+	return err
 }
 
 // closeFile closes the writers to the persistence file.
@@ -173,15 +169,18 @@ func (ph *FileHandler) persistRoutine() {
 	for {
 		ph.paused.Wait()
 		buf := <-ph.writeChan
-		if err := ph.writer.Write(buf); err != nil {
+		msg, err := json.Marshal(buf)
+		if err != nil {
+			log.Println(err)
+		}
+		if _, err = ph.fileHandle.Write(msg); err != nil {
 			fmt.Println(err)
 		}
-		ph.writer.Flush()
 	}
 }
 
 // AddEntry adds a message with an identifier to the persistence channel.
-func (ph *FileHandler) AddEntry(id string, msg []byte) error {
-	ph.writeChan <- []string{id, string(msg)}
+func (ph *FileHandler) AddEntry(id string, msg proto.Message) error {
+	ph.writeChan <- msg
 	return nil
 }

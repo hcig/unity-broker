@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"log"
-	"viveSyncBroker/pb/proto"
+	"viveSyncBroker/pb"
 )
 
 // ParseCommand unpacks a json string command to a Command.
@@ -24,23 +23,6 @@ func UpdateTimestamp(c *messages.Command) {
 	now := timestamppb.Now()
 	c.Payload.OrigTimestamp = c.Timestamp
 	c.Timestamp = now
-}
-
-// ToBytes converts a Command to a byte slice.
-func ToBytes(c *messages.Command) []byte {
-	result, err := proto.Marshal(c)
-	if err != nil {
-		protoErr, err := proto.Marshal(&messages.CommandError{
-			Message:   err.Error(),
-			Timestamp: timestamppb.Now(),
-			Reason:    string(result),
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-		return protoErr
-	}
-	return result
 }
 
 // CommandHandler defines a registry and execution regulator for command name handlers.
@@ -75,15 +57,10 @@ func (ch *CommandHandler) Handle(command *messages.Command) error {
 
 // Broadcast publishes a Command to the PubSubTopicBasic topic.
 func (ch *CommandHandler) Broadcast(com *messages.Command) {
-	ch.nm.Pubsub.Publish(PubSubTopicBasic, ToBytes(com))
-}
-
-// Respond sends a Command to the Command's source.
-func (ch *CommandHandler) Respond(com *messages.Command) {
-	ch.nm.Pubsub.Unicast(com.Source, ToBytes(com))
+	ch.nm.Pubsub.Publish(PubSubTopicBasic, com)
 }
 
 // Persist adds a Command to the persistence queue.
 func (ch *CommandHandler) Persist(com *messages.Command) {
-	ch.nm.Persist.AddEntry(com.Source, ToBytes(com))
+	ch.nm.Persist.AddEntry(com.Source, com)
 }

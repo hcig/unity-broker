@@ -3,9 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
 	"io"
 	"net/http"
 	"strconv"
+	"viveSyncBroker/lib"
+	"viveSyncBroker/persistence"
 )
 
 func HomeHandler(writer http.ResponseWriter, request *http.Request) {
@@ -117,4 +120,33 @@ func TrialsHandler(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNotImplemented)
 		return
 	}
+}
+
+/***
+ * Endpoints delivering R fragments
+ **/
+
+func RConnectionHandler(writer http.ResponseWriter, request *http.Request) {
+	connVar := lib.CoalesceString(request.URL.Query().Get("name"), persistence.RDefaultConnectionVarName)
+	_, _ = writer.Write([]byte(fmt.Sprintf("library(DBI)\n%s <- %s", connVar, persistence.TSConfig.AsRConnection())))
+}
+
+func RTimeseriesQueryHandler(writer http.ResponseWriter, request *http.Request) {
+	connVar := lib.CoalesceString(request.URL.Query().Get("name"), persistence.RDefaultConnectionVarName)
+	queryVar := lib.CoalesceString(request.URL.Query().Get("queryName"), persistence.RDefaultDataQueryVarName)
+	vars := mux.Vars(request)
+	part, err := strconv.Atoi(vars["part"])
+	if err != nil {
+		fmt.Println(err)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	trial, err := strconv.Atoi(vars["trial"])
+	if err != nil {
+		fmt.Println(err)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	_, _ = writer.Write([]byte(fmt.Sprintf(
+		`%s <- dbGetQuery(%s, "%s", param = list(%d, %d))`,
+		queryVar, connVar, netmgr.Persist.(*persistence.TimescaleHandler).GetTrialQuery(), part, trial,
+	)))
 }

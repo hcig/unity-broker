@@ -7,13 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"google.golang.org/protobuf/proto"
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
 const (
-	DbConnTpl              = "postgres://%s:%s@%s:%s/%s"
+	DbConnTpl              = "postgres://%s:%s@%s:%d/%s"
 	DbParticipantTableName = "participant"
 	DbTrialTableName       = "trial"
 
@@ -36,8 +38,14 @@ const (
         FOREIGN KEY (%s_id, %s_id) REFERENCES %s (%s_id, id)
 	);`
 
-	DBInsertStatement = `INSERT INTO "%s_data" VALUES ($1, $2, $3, $4);`
+	DBInsertStatement        = `INSERT INTO "%s_data" VALUES ($1, $2, $3, $4);`
+	DBReadHyperTableQueryTpl = `SELECT * FROM %s_data WHERE %s_id = $1 AND %s_id = $2;`
+
+	RDefaultConnectionVarName = "connection"
+	RDefaultDataQueryVarName  = "dataQuery"
 )
+
+var TSConfig *TsConnection
 
 type JsonEvent struct {
 	Id      string `json:"id"`
@@ -54,6 +62,34 @@ func (a *JsonEvent) Scan(value any) error {
 		return errors.New("type assertion to []byte failed")
 	}
 	return json.Unmarshal(b, &a)
+}
+
+type TsConnection struct {
+	Host     string
+	Port     int
+	DBName   string
+	User     string
+	Password string
+}
+
+func (c *TsConnection) AsRConnection() string {
+	return fmt.Sprintf(
+		`dbConnect(RPostgres::Postgres(), dbname='%s', host='%s', port=%d, user='%s', password='%s')`,
+		c.DBName,
+		c.Host,
+		c.Port,
+		c.User,
+		c.Password,
+	)
+}
+func (c *TsConnection) AsDbUri() string {
+	return fmt.Sprintf(DbConnTpl,
+		c.User,
+		c.Password,
+		c.Host,
+		c.Port,
+		c.DBName,
+	)
 }
 
 type TimescaleHandler struct {
@@ -85,10 +121,10 @@ func (h *TimescaleHandler) Init() error {
 	}
 	// Set latest participant and trial
 	if h.participant, err = h.LastParticipant(); err != nil {
-		return err
+		return fmt.Errorf("participants: %v", err)
 	}
 	if h.trial, err = h.LastTrial(); err != nil {
-		return err
+		return fmt.Errorf("trials: %v", err)
 	}
 	h.writeChan = make(chan JsonEvent)
 	go h.persistRoutine()
@@ -100,22 +136,22 @@ func (h *TimescaleHandler) connect(global bool) error {
 	if h.ctx == nil {
 		h.ctx = context.Background()
 	}
-	params := []any{
-		os.Getenv("PERSIST_TIMESCALE_USERNAME"),
-		os.Getenv("PERSIST_TIMESCALE_PASSWORD"),
-		os.Getenv("PERSIST_TIMESCALE_HOST"),
-		os.Getenv("PERSIST_TIMESCALE_PORT"),
+	dbPort, err := strconv.Atoi(os.Getenv("PERSIST_TIMESCALE_PORT"))
+	if err != nil {
+		return err
 	}
-	if global {
-		params = append(params, "")
-	} else {
+	TSConfig = &TsConnection{
+		Host:     os.Getenv("PERSIST_TIMESCALE_HOST"),
+		Port:     dbPort,
+		DBName:   "",
+		User:     os.Getenv("PERSIST_TIMESCALE_USERNAME"),
+		Password: os.Getenv("PERSIST_TIMESCALE_PASSWORD"),
+	}
+	if !global {
 		// Connect to specific DB
-		params = append(params, os.Getenv("PERSIST_TIMESCALE_DATABASE"))
+		TSConfig.DBName = os.Getenv("PERSIST_TIMESCALE_DATABASE")
 	}
-	h.connection, err = pgx.Connect(h.ctx, fmt.Sprintf(
-		DbConnTpl,
-		params...,
-	))
+	h.connection, err = pgx.Connect(h.ctx, TSConfig.AsDbUri())
 	return err
 }
 
@@ -161,7 +197,21 @@ func (h *TimescaleHandler) AddParticipantData(data any) error {
 	return err
 }
 
+func (h *TimescaleHandler) hasTrials() bool {
+	qry := fmt.Sprintf(`SELECT reltuples::bigint AS estimate FROM pg_class where relname = '%s';`, h.tbl(DbTrialTableName))
+	row := h.connection.QueryRow(h.ctx, qry, h.participant)
+	var numTrials int
+	_ = row.Scan(&numTrials)
+	return numTrials > 0
+}
+
 func (h *TimescaleHandler) LastTrial() (int, error) {
+	if !h.hasTrials() {
+		err := h.SetTrial(0)
+		if err != nil {
+			return h.trial, err
+		}
+	}
 	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s WHERE %s_id = $1 GROUP BY id;`, h.tbl(DbTrialTableName), DbParticipantTableName)
 	row := h.connection.QueryRow(h.ctx, qry, h.participant)
 	err := row.Scan(&h.trial)
@@ -172,8 +222,9 @@ func (h *TimescaleHandler) SetTrial(trial int) error {
 	h.trial = trial
 	_, err := h.connection.Exec(h.ctx,
 		fmt.Sprintf(
-			"INSERT INTO %s (%s_id, id, data) VALUES ($1, $2, $3);",
+			"INSERT INTO %s (%s_id, id, data) VALUES ($1, $2, $3) ON CONFLICT (%s_id, id) DO UPDATE SET data = $3;",
 			h.tbl(DbTrialTableName),
+			DbParticipantTableName,
 			DbParticipantTableName,
 		),
 		h.participant,
@@ -199,13 +250,14 @@ func (h *TimescaleHandler) AddTrialData(data any) error {
 
 // persistRoutine reads from the persistence channel and writes to the file
 func (h *TimescaleHandler) persistRoutine() {
+	log.Println("Start persistence routine")
 	_, err := h.connection.Prepare(
 		h.ctx,
 		"timescale_stm",
 		fmt.Sprintf(DBInsertStatement, h.tbl(DbTrialTableName)),
 	)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalln("Error persisting", err)
 	}
 	for {
 		buf := <-h.writeChan
@@ -217,17 +269,25 @@ func (h *TimescaleHandler) persistRoutine() {
 			h.trial,
 			buf,
 		); err != nil {
-			fmt.Printf("Error on Part %d, Trial %d: %v\n", h.participant, h.trial, err)
+			log.Printf("Error on Part %d, Trial %d: %v\n", h.participant, h.trial, err)
 		}
 	}
 }
 
-func (h *TimescaleHandler) AddEntry(id string, msg []byte) error {
+func (h *TimescaleHandler) AddEntry(id string, msg proto.Message) error {
+	buf, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
 	h.writeChan <- JsonEvent{
 		Id:      id,
-		Message: string(msg),
+		Message: string(buf),
 	}
 	return nil
+}
+
+func (h *TimescaleHandler) GetTrialQuery() string {
+	return fmt.Sprintf(DBReadHyperTableQueryTpl, h.tbl(DbTrialTableName), DbParticipantTableName, DbTrialTableName)
 }
 
 func (h *TimescaleHandler) verifyDatabase() error {
@@ -249,7 +309,7 @@ func (h *TimescaleHandler) verifyDatabase() error {
 	if !dbExists {
 		// Create Database
 		qry = fmt.Sprintf(
-			`CREATE DATABASE "%s" WITH OWNER "%s" ENCODING 'UTF8' LC_COLLATE = 'C.UTF-8' LC_CTYPE = 'C.UTF-8';`,
+			`CREATE DATABASE "%s" WITH OWNER "%s" ENCODING 'UTF8' LC_COLLATE = 'en_US.utf8' LC_CTYPE = 'en_US.utf8';`,
 			dbName,
 			os.Getenv("PERSIST_TIMESCALE_USERNAME"),
 		)

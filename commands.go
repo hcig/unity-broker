@@ -2,65 +2,55 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"viveSyncBroker/pb/proto"
+	"viveSyncBroker/pb"
 )
 
 // RegisterCommands is the central point to register commands.
 func RegisterCommands() {
 	// Echo cmd: Update timestamp and add original to the payload
-	netmgr.Commands.Register("echo", EchoCommand)
-	// Shutdown cmd: Shutdown the broker - FIXME to be removed ^^
-	netmgr.Commands.Register("shutdown", ShutdownCommand)
+	netmgr.BrokerServer.Register(messages.CommandType_EchoCommand, EchoCommand)
 	// Disconnect from the broker
-	netmgr.Commands.Register("disconnect", DisconnectCommand)
+	netmgr.BrokerServer.Register(messages.CommandType_DisconnectCommand, DisconnectCommand)
 	// Request broker information and general values
-	netmgr.Commands.Register("get", GetCommand)
+	netmgr.BrokerServer.Register(messages.CommandType_GetCommand, GetCommand)
 	// Set broker information and general values
-	netmgr.Commands.Register("set", SetCommand)
+	netmgr.BrokerServer.Register(messages.CommandType_SetCommand, SetCommand)
 	// Set broker information and general values
-	netmgr.Commands.Register("update", UpdateCommand)
+	netmgr.BrokerServer.Register(messages.CommandType_UpdateCommand, UpdateCommand)
 	// Send a message to every listening component
-	netmgr.Commands.Register("msg", MsgCommand)
+	netmgr.BrokerServer.Register(messages.CommandType_MsgCommand, MsgCommand)
 }
 
 // EchoCommand is the Command for "echo".
-func EchoCommand(com *messages.Command, ch *CommandHandler) error {
+func EchoCommand(com *messages.Command) error {
 	UpdateTimestamp(com)
-	ch.Broadcast(com)
-	return nil
-}
-
-// ShutdownCommand is the Command for "shutdown"
-func ShutdownCommand(com *messages.Command, ch *CommandHandler) error {
-	// os.Exit sends a syscall.SIGINT on exit, that gets worked with in the shutdown routine
-	os.Exit(1)
+	netmgr.Broadcast(com)
 	return nil
 }
 
 // DisconnectCommand is the Command for "disconnect".
-func DisconnectCommand(com *messages.Command, ch *CommandHandler) error {
-	ch.nm.Pubsub.Unsubscribe(PubSubTopicBasic, com.Source)
+func DisconnectCommand(com *messages.Command) error {
+	netmgr.Pubsub.Unsubscribe(PubSubTopicBasic, com.Source)
 	return nil
 }
 
 // GetCommand is the Command for "get".
-func GetCommand(com *messages.Command, ch *CommandHandler) error {
+func GetCommand(com *messages.Command) error {
 	UpdateTimestamp(com)
 	fmt.Printf("%v\n", com.Payload.GetGet().GetData())
 	for _, param := range com.Payload.GetGet().GetData() {
 		switch param {
 		case "help":
-			help := make([]string, 0, len(netmgr.Commands.handlers))
-			for c := range netmgr.Commands.handlers {
+			help := make([]string, 0, len(netmgr.BrokerServer.handlers))
+			for c := range netmgr.BrokerServer.handlers {
 				help = append(help, c.String())
 			}
 			com.Payload.Response = help
-			ch.Respond(com)
+			netmgr.Pubsub.Unicast(com.Source, com)
 			break
 		case "clients":
-			com.Payload.Response = ch.nm.Pubsub.GetClients()
-			ch.Respond(com)
+			com.Payload.Response = netmgr.Pubsub.GetClients()
+			netmgr.Pubsub.Unicast(com.Source, com)
 			break
 		}
 	}
@@ -68,22 +58,31 @@ func GetCommand(com *messages.Command, ch *CommandHandler) error {
 }
 
 // SetCommand is the Command for "set"
-func SetCommand(com *messages.Command, ch *CommandHandler) error {
-	ch.Persist(com)
-	ch.Broadcast(com)
+func SetCommand(com *messages.Command) error {
+	err := netmgr.Persist.AddEntry(com.Source, com)
+	if err != nil {
+		return err
+	}
+	netmgr.Broadcast(com)
 	return nil
 }
 
 // UpdateCommand is the Command for "update".
-func UpdateCommand(com *messages.Command, ch *CommandHandler) error {
-	ch.Persist(com)
-	ch.Broadcast(com)
+func UpdateCommand(com *messages.Command) error {
+	err := netmgr.Persist.AddEntry(com.Source, com)
+	if err != nil {
+		return err
+	}
+	netmgr.Broadcast(com)
 	return nil
 }
 
 // MsgCommand is the Command for "send".
-func MsgCommand(com *messages.Command, ch *CommandHandler) error {
-	ch.Persist(com)
-	ch.Broadcast(com)
+func MsgCommand(com *messages.Command) error {
+	err := netmgr.Persist.AddEntry(com.Source, com)
+	if err != nil {
+		return err
+	}
+	netmgr.Broadcast(com)
 	return nil
 }

@@ -98,7 +98,7 @@ message Payload {
   }
   google.protobuf.Timestamp origTimestamp = 1;
   oneof PayloadTypes {
-    bool none = 2;
+    bool empty = 2;
     GetPayload get = 3;
     SetPayload set = 4;
     UpdatePayload update = 5;

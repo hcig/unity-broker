@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"os"
 	"strings"
 )
@@ -17,7 +18,7 @@ type Handler interface {
 	SetTrial(pass int) error
 	AddTrialData(data any) error
 
-	AddEntry(id string, msg []byte) error
+	AddEntry(id string, msg proto.Message) error
 
 	Init() error
 	Close() error

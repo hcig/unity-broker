@@ -19,7 +19,6 @@ func main() {
 	}
 	setupLogger()
 	netmgr = NewNetworkMgr()
-	RegisterCommands()
 	if err := netmgr.Connect(); err != nil {
 		log.Fatal(err)
 	}
