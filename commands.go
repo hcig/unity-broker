@@ -23,6 +23,10 @@ func RegisterCommands() {
 
 // EchoCommand is the Command for "echo".
 func EchoCommand(com *messages.Command) error {
+	err := netmgr.Persist.AddEntry(com.Source, com)
+	if err != nil {
+		return err
+	}
 	UpdateTimestamp(com)
 	netmgr.Broadcast(com)
 	return nil

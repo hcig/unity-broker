@@ -30,6 +30,7 @@ func NewPubsub(nm *NetworkMgr) *Pubsub {
 	ps := &Pubsub{}
 	ps.nm = nm
 	ps.subs = make(map[string]*sync.Map)
+	ps.subs[PubSubTopicBasic] = &sync.Map{}
 	ps.HasMessages = make(chan bool, 16)
 	return ps
 }
@@ -62,11 +63,11 @@ func (ps *Pubsub) Unsubscribe(topic string, client string) {
 
 // Publish a message to a topic.
 func (ps *Pubsub) Publish(topic string, msg proto.Message) {
-	ps.PublishWithOptions(topic, msg, PlainMode)
+	ps.PublishWithOptions(topic, msg)
 }
 
 // PublishWithOptions publishes s message to a topic with a config if encryption should be used.
-func (ps *Pubsub) PublishWithOptions(topic string, msg proto.Message, plain bool) {
+func (ps *Pubsub) PublishWithOptions(topic string, msg proto.Message) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {
@@ -81,11 +82,11 @@ func (ps *Pubsub) PublishWithOptions(topic string, msg proto.Message, plain bool
 
 // Unicast sends a message to a client
 func (ps *Pubsub) Unicast(client string, msg proto.Message) {
-	ps.UnicastWithOptions(client, msg, PlainMode)
+	ps.UnicastWithOptions(client, msg)
 }
 
 // UnicastWithOptions sends a message to a client with a config if encryption should be used.
-func (ps *Pubsub) UnicastWithOptions(clientName string, msg proto.Message, plain bool) {
+func (ps *Pubsub) UnicastWithOptions(clientName string, msg proto.Message) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.closed {

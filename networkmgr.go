@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
-	"fmt"
 	"github.com/gorilla/mux"
 	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/proto"
@@ -82,6 +81,7 @@ func (nm *NetworkMgr) Connect() error {
 	router.HandleFunc("/", HomeHandler)
 	router.HandleFunc("/participants", ParticipantsHandler)
 	router.HandleFunc("/trials", TrialsHandler)
+	router.HandleFunc("/override-gestures", nm.GesturesOverrideHandler)
 
 	// R connection
 	r := router.PathPrefix("/r").Subrouter()
@@ -101,19 +101,21 @@ func (nm *NetworkMgr) ListenClient(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	// If new client is joining, add and subscribe
 	nm.Pubsub.Subscribe(PubSubTopicBasic, conn)
+	cSrc := conn.RemoteAddr().String()
 	for !nm.Pubsub.closed {
 		cmd := &messages.Command{}
 		err := protodelim.UnmarshalFrom(reader, cmd)
 		if err == io.EOF {
 			log.Println("Client closed conenction", err)
+			nm.Pubsub.Unsubscribe(PubSubTopicBasic, cSrc)
+			delete(nm.clients, cSrc)
 			return
 		}
 		if err != nil {
 			log.Println("Failed to read command:", err)
 			continue
 		}
-		cmd.Source = conn.RemoteAddr().String()
-		fmt.Println(cmd)
+		cmd.Source = cSrc
 		ack, err := nm.BrokerServer.ReceiveCommand(cmd)
 		if err != nil {
 			log.Println("Failed to execute command:", err)
@@ -124,7 +126,6 @@ func (nm *NetworkMgr) ListenClient(conn net.Conn) {
 }
 
 func (nm *NetworkMgr) SendClient(conn net.Conn, message proto.Message) {
-	fmt.Println("Sending message: ", message)
 	_, err := protodelim.MarshalTo(conn, message)
 	if err != nil {
 		log.Println("Failed to marshal message:", err)

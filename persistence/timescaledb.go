@@ -165,9 +165,10 @@ func (h *TimescaleHandler) SetPrefix(prefix string) error {
 }
 
 func (h *TimescaleHandler) LastParticipant() (int, error) {
-	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s GROUP BY id;`, h.tbl(DbParticipantTableName))
+	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s;`, h.tbl(DbParticipantTableName))
 	row := h.connection.QueryRow(h.ctx, qry)
 	err := row.Scan(&h.participant)
+	fmt.Println(h.participant, err)
 	return h.participant, err
 }
 
@@ -175,7 +176,7 @@ func (h *TimescaleHandler) SetParticipant(participant int) error {
 	h.participant = participant
 	_, err := h.connection.Exec(h.ctx,
 		fmt.Sprintf(
-			"INSERT INTO %s (id, data) VALUES ($1, $2);",
+			"INSERT INTO %s (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING;",
 			h.tbl(DbParticipantTableName),
 		),
 		h.participant,
@@ -197,22 +198,8 @@ func (h *TimescaleHandler) AddParticipantData(data any) error {
 	return err
 }
 
-func (h *TimescaleHandler) hasTrials() bool {
-	qry := fmt.Sprintf(`SELECT reltuples::bigint AS estimate FROM pg_class where relname = '%s';`, h.tbl(DbTrialTableName))
-	row := h.connection.QueryRow(h.ctx, qry, h.participant)
-	var numTrials int
-	_ = row.Scan(&numTrials)
-	return numTrials > 0
-}
-
 func (h *TimescaleHandler) LastTrial() (int, error) {
-	if !h.hasTrials() {
-		err := h.SetTrial(0)
-		if err != nil {
-			return h.trial, err
-		}
-	}
-	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s WHERE %s_id = $1 GROUP BY id;`, h.tbl(DbTrialTableName), DbParticipantTableName)
+	qry := fmt.Sprintf(`SELECT COALESCE(MAX(id), 0) FROM %s WHERE %s_id = $1;`, h.tbl(DbTrialTableName), DbParticipantTableName)
 	row := h.connection.QueryRow(h.ctx, qry, h.participant)
 	err := row.Scan(&h.trial)
 	return h.trial, err
