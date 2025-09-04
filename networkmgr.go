@@ -81,6 +81,7 @@ func (nm *NetworkMgr) Connect() error {
 	router.HandleFunc("/", HomeHandler)
 	router.HandleFunc("/participants", ParticipantsHandler)
 	router.HandleFunc("/trials", TrialsHandler)
+	router.HandleFunc("/questionnaires", QuestionnairesHandler)
 	router.HandleFunc("/override-gestures", nm.GesturesOverrideHandler)
 
 	// R connection

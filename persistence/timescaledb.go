@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
 	"log"
 	"os"
@@ -15,9 +16,10 @@ import (
 )
 
 const (
-	DbConnTpl              = "postgres://%s:%s@%s:%d/%s"
-	DbParticipantTableName = "participant"
-	DbTrialTableName       = "trial"
+	DbConnTpl                = "postgres://%s:%s@%s:%d/%s"
+	DbParticipantTableName   = "participant"
+	DbTrialTableName         = "trial"
+	DbQuestionnaireTableName = "questionnaire"
 
 	DbParticipantTableDefinition = `CREATE TABLE "%s" (
 		id SERIAL PRIMARY KEY,
@@ -30,6 +32,13 @@ const (
 		PRIMARY KEY (%s_id, id),
         FOREIGN KEY (%s_id) REFERENCES %s (id)
 	);`
+	DbQuestionnaireTableDefinition = `CREATE TABLE IF NOT EXISTS "%s" (
+        id SERIAL PRIMARY KEY,
+        %s_id INTEGER NOT NULL,
+        subscale text not null,
+        data JSONB not null,
+        FOREIGN KEY (%s_id) REFERENCES %s (id)
+    );`
 	DbHyperTableDefinition = `CREATE TABLE "%s_data" (
         time TIMESTAMPTZ NOT NULL,
         %s_id INTEGER,
@@ -38,8 +47,9 @@ const (
         FOREIGN KEY (%s_id, %s_id) REFERENCES %s (%s_id, id)
 	);`
 
-	DBInsertStatement        = `INSERT INTO "%s_data" VALUES ($1, $2, $3, $4);`
-	DBReadHyperTableQueryTpl = `SELECT * FROM %s_data WHERE %s_id = $1 AND %s_id = $2;`
+	DBInsertStatement              = `INSERT INTO "%s_data" VALUES ($1, $2, $3, $4);`
+	DBInsertQuestionnaireStatement = `INSERT INTO "%s" (%s_id, subscale, data) VALUES ($1, $2, $3)`
+	DBReadHyperTableQueryTpl       = `SELECT * FROM %s_data WHERE %s_id = $1 AND %s_id = $2;`
 
 	RDefaultConnectionVarName = "connection"
 	RDefaultDataQueryVarName  = "dataQuery"
@@ -94,7 +104,7 @@ func (c *TsConnection) AsDbUri() string {
 
 type TimescaleHandler struct {
 	ctx        context.Context
-	connection *pgx.Conn
+	connection *pgxpool.Pool
 	writeChan  chan JsonEvent
 
 	prefix      string
@@ -110,10 +120,10 @@ func NewTimescaleHandler() *TimescaleHandler {
 
 func (h *TimescaleHandler) Init() error {
 	var err error
-	if err = h.verifyDatabase(); err != nil {
+	if err = h.connect(false); err != nil {
 		return err
 	}
-	if err = h.connect(false); err != nil {
+	if err = h.verifyDatabase(); err != nil {
 		return err
 	}
 	if err = h.verifyTables(); err != nil {
@@ -151,12 +161,13 @@ func (h *TimescaleHandler) connect(global bool) error {
 		// Connect to specific DB
 		TSConfig.DBName = os.Getenv("PERSIST_TIMESCALE_DATABASE")
 	}
-	h.connection, err = pgx.Connect(h.ctx, TSConfig.AsDbUri())
+	h.connection, err = pgxpool.New(h.ctx, TSConfig.AsDbUri())
 	return err
 }
 
 func (h *TimescaleHandler) Close() error {
-	return h.connection.Close(h.ctx)
+	h.connection.Close()
+	return nil
 }
 
 func (h *TimescaleHandler) SetPrefix(prefix string) error {
@@ -166,9 +177,14 @@ func (h *TimescaleHandler) SetPrefix(prefix string) error {
 
 func (h *TimescaleHandler) LastParticipant() (int, error) {
 	qry := fmt.Sprintf(`SELECT MAX(id) FROM %s;`, h.tbl(DbParticipantTableName))
-	row := h.connection.QueryRow(h.ctx, qry)
-	err := row.Scan(&h.participant)
-	fmt.Println(h.participant, err)
+	rows, err := h.connection.Query(h.ctx, qry)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&h.participant)
+	}
 	return h.participant, err
 }
 
@@ -200,8 +216,14 @@ func (h *TimescaleHandler) AddParticipantData(data any) error {
 
 func (h *TimescaleHandler) LastTrial() (int, error) {
 	qry := fmt.Sprintf(`SELECT COALESCE(MAX(id), 0) FROM %s WHERE %s_id = $1;`, h.tbl(DbTrialTableName), DbParticipantTableName)
-	row := h.connection.QueryRow(h.ctx, qry, h.participant)
-	err := row.Scan(&h.trial)
+	rows, err := h.connection.Query(h.ctx, qry, h.participant)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&h.trial)
+	}
 	return h.trial, err
 }
 
@@ -218,6 +240,12 @@ func (h *TimescaleHandler) SetTrial(trial int) error {
 		h.trial,
 		make(map[string]any),
 	)
+	return err
+}
+
+func (h *TimescaleHandler) SaveQuestionnaire(subscale string, data []byte) error {
+	qry := fmt.Sprintf(DBInsertQuestionnaireStatement, h.tbl(DbQuestionnaireTableName), DbParticipantTableName)
+	_, err := h.connection.Exec(h.ctx, qry, h.participant, subscale, data)
 	return err
 }
 
@@ -238,19 +266,12 @@ func (h *TimescaleHandler) AddTrialData(data any) error {
 // persistRoutine reads from the persistence channel and writes to the file
 func (h *TimescaleHandler) persistRoutine() {
 	log.Println("Start persistence routine")
-	_, err := h.connection.Prepare(
-		h.ctx,
-		"timescale_stm",
-		fmt.Sprintf(DBInsertStatement, h.tbl(DbTrialTableName)),
-	)
-	if err != nil {
-		log.Fatalln("Error persisting", err)
-	}
+	qry := fmt.Sprintf(DBInsertStatement, h.tbl(DbTrialTableName))
 	for {
 		buf := <-h.writeChan
-		if _, err = h.connection.Exec(
+		if _, err := h.connection.Exec(
 			h.ctx,
-			"timescale_stm",
+			qry,
 			time.Now(),
 			h.participant,
 			h.trial,
@@ -258,6 +279,7 @@ func (h *TimescaleHandler) persistRoutine() {
 		); err != nil {
 			log.Printf("Error on Part %d, Trial %d: %v\n", h.participant, h.trial, err)
 		}
+
 	}
 }
 
@@ -278,20 +300,25 @@ func (h *TimescaleHandler) GetTrialQuery() string {
 }
 
 func (h *TimescaleHandler) verifyDatabase() error {
-	var err error
-	if err = h.connect(true); err != nil {
+	ctx := context.Background()
+	tx, err := h.connection.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
 		return err
 	}
-	defer h.connection.Close(h.ctx)
 	dbName := os.Getenv("PERSIST_TIMESCALE_DATABASE")
 	qry := "SELECT EXISTS (SELECT FROM pg_catalog.pg_database WHERE datname = $1);"
 	var dbExists bool
-	if err = h.connection.QueryRow(
+	rows, err := tx.Query(
 		h.ctx,
 		qry,
 		dbName,
-	).Scan(&dbExists); err != nil {
-		return err
+	)
+	defer rows.Close()
+	for rows.Next() {
+		if err = rows.Scan(&dbExists); err != nil {
+			tx.Rollback(ctx)
+			return err
+		}
 	}
 	if !dbExists {
 		// Create Database
@@ -301,10 +328,11 @@ func (h *TimescaleHandler) verifyDatabase() error {
 			os.Getenv("PERSIST_TIMESCALE_USERNAME"),
 		)
 		if _, err = h.connection.Exec(h.ctx, qry); err != nil {
+			tx.Rollback(ctx)
 			return err
 		}
 	}
-	return err
+	return tx.Commit(ctx)
 }
 
 func (h *TimescaleHandler) verifyTables() error {
@@ -360,7 +388,21 @@ func (h *TimescaleHandler) createTables() error {
 	); err != nil {
 		return err
 	}
-	// 2. Trial data hypertable
+	// 3. Questionnaire
+	qry = fmt.Sprintf(
+		DbQuestionnaireTableDefinition,
+		h.tbl(DbQuestionnaireTableName),
+		DbParticipantTableName,
+		DbParticipantTableName,
+		h.tbl(DbParticipantTableName),
+	)
+	if _, err = h.connection.Exec(
+		h.ctx,
+		qry,
+	); err != nil {
+		return err
+	}
+	// 4. Trial data hypertable
 	qry = fmt.Sprintf(
 		DbHyperTableDefinition,
 		h.tbl(DbTrialTableName),

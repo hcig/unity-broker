@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"google.golang.org/protobuf/proto"
 	"log"
@@ -55,7 +56,11 @@ func (ph *FileHandler) SetPrefix(prefix string) error {
 
 // AddParticipantData adds data for a participant
 func (ph *FileHandler) AddParticipantData(data any) error {
-	return fmt.Errorf("Not implemented")
+	return errors.New("not implemented")
+}
+
+func (ph *FileHandler) SaveQuestionnaire(subscale string, data []byte) error {
+	return errors.New("not implemented")
 }
 
 // SetParticipant sets the participant number and restarts the file persistor

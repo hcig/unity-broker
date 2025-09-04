@@ -13,6 +13,7 @@ type Handler interface {
 	LastParticipant() (int, error)
 	SetParticipant(participant int) error
 	AddParticipantData(data any) error
+	SaveQuestionnaire(subscale string, data []byte) error
 
 	LastTrial() (int, error)
 	SetTrial(pass int) error
@@ -53,6 +54,9 @@ func Factory() Handler {
 		hdl = NewFileHandler()
 	case Db:
 		hdl = NewTimescaleHandler()
+	default:
+		fmt.Printf("Warning: Using blackhole persistence for unknown mode '%s'\n", mode)
+		hdl = NewBlackholeHandler()
 	}
 	prefix, found := os.LookupEnv("PERSIST_PREFIX")
 	if !found {

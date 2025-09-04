@@ -141,6 +141,19 @@ func TrialsHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
+func QuestionnairesHandler(writer http.ResponseWriter, request *http.Request) {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		fmt.Println(err)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+	err = netmgr.Persist.SaveQuestionnaire(request.URL.Query().Get("kind"), body)
+	if err != nil {
+		fmt.Println(err)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func (nm *NetworkMgr) GesturesOverrideHandler(writer http.ResponseWriter, request *http.Request) {
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
