@@ -1,3 +1,8 @@
 viveSyncBroker
 app
 output/**/*.csv
+# Ignore compiled protocol buffers
+pb
+.idea
+/coverage.out
+certs

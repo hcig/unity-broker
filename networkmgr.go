@@ -1,12 +1,20 @@
 package main
 
 import (
+	"bufio"
+	"crypto/tls"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
+	messages "viveSyncBroker/pb"
 	"viveSyncBroker/persistence"
+
+	"github.com/gorilla/mux"
+	"google.golang.org/protobuf/encoding/protodelim"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -14,12 +22,12 @@ var (
 )
 
 type NetworkMgr struct {
-	conn              *net.UDPConn
+	conn              net.Listener
 	Pubsub            *Pubsub
-	Commands          *CommandHandler
-	Persist           *persistence.PersistenceHandler
+	BrokerServer      *BrokerServer
+	Persist           persistence.Handler
 	ShutdownCompleted chan bool
-	gz                *GzHandler
+	clients           map[string]net.Conn
 }
 
 func NewNetworkMgr() *NetworkMgr {
@@ -30,83 +38,125 @@ func NewNetworkMgr() *NetworkMgr {
 	PlainMode = pm
 	nm := &NetworkMgr{}
 	nm.Pubsub = NewPubsub(nm)
-	nm.Commands = NewCommandHandler(nm)
-	nm.Persist = persistence.NewPersistenceHandler()
+	nm.Persist = persistence.Factory()
 	nm.ShutdownCompleted = make(chan bool, 1)
-	nm.gz = new(GzHandler)
-	nm.gz.Setup()
+	nm.clients = make(map[string]net.Conn)
 	return nm
 }
 
 func (nm *NetworkMgr) Connect() error {
-	s, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+os.Getenv("BROKER_PORT"))
-	log.Println("Listening on Port " + os.Getenv("BROKER_PORT"))
-	if err != nil {
-		return err
+	var err error
+	// gRPC Connection
+	if os.Getenv("BROKER_SSL") == "true" {
+		cer, err := tls.LoadX509KeyPair("certs/server.crt", "certs/server.key")
+		if err != nil {
+			return err
+		}
+		nm.conn, err = tls.Listen(
+			"tcp4",
+			"0.0.0.0:"+os.Getenv("BROKER_PORT"),
+			&tls.Config{
+				Certificates: []tls.Certificate{cer},
+			},
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		nm.conn, err = net.Listen(
+			"tcp4",
+			"0.0.0.0:"+os.Getenv("BROKER_PORT"),
+		)
+		if err != nil {
+			return err
+		}
 	}
-	nm.conn, err = net.ListenUDP("udp4", s)
-	if err != nil {
-		return err
-	}
-	go nm.Listen()
+	nm.BrokerServer = NewBrokerServer(nm)
+	RegisterCommands()
+	go nm.BrokerServer.Serve()
 	go nm.Publish()
-	return nil
+	log.Println("Protobuf/TCP: Listening on Port " + os.Getenv("BROKER_PORT"))
+
+	router := mux.NewRouter()
+	router.StrictSlash(true)
+	router.HandleFunc("/", HomeHandler)
+	router.HandleFunc("/participants", ParticipantsHandler)
+	router.HandleFunc("/trials", TrialsHandler)
+	router.HandleFunc("/questionnaires", QuestionnairesHandler)
+	router.HandleFunc("/override-gestures", nm.GesturesOverrideHandler)
+
+	// R connection
+	r := router.PathPrefix("/r").Subrouter()
+	r.HandleFunc("/connection", RConnectionHandler)
+	r.HandleFunc("/timeseries/{part}/{trial}", RTimeseriesQueryHandler)
+
+	log.Println("REST: Listening on Port " + os.Getenv("REST_PORT"))
+	return http.ListenAndServe("0.0.0.0:"+os.Getenv("REST_PORT"), router)
 }
 
-func (nm *NetworkMgr) Listen() {
-	var buffer []byte
+func (nm *NetworkMgr) HandleClient(conn net.Conn) {
+	nm.clients[conn.RemoteAddr().String()] = conn
+	go nm.ListenClient(conn)
+}
+
+func (nm *NetworkMgr) ListenClient(conn net.Conn) {
+	reader := bufio.NewReader(conn)
+	// If new client is joining, add and subscribe
+	nm.Pubsub.Subscribe(PubSubTopicBasic, conn)
+	cSrc := conn.RemoteAddr().String()
 	for !nm.Pubsub.closed {
-		buffer = make([]byte, 1024)
-		n, addr, err := nm.conn.ReadFromUDP(buffer)
-		data := make([]byte, 0, n)
-		if n > 0 {
-			data = buffer[0 : n-1]
+		cmd := &messages.Command{}
+		err := protodelim.UnmarshalFrom(reader, cmd)
+		if err == io.EOF {
+			log.Println("Client closed conenction", err)
+			nm.Pubsub.Unsubscribe(PubSubTopicBasic, cSrc)
+			delete(nm.clients, cSrc)
+			return
 		}
-		if !PlainMode {
-			data, err = nm.gz.Unpack(data)
-			if err != nil && err != io.ErrUnexpectedEOF {
-				// Drop datagrams that are not parseable
-				log.Println(err)
-				continue
-			}
-		}
-		cmd, err := ParseCommand(data, addr)
 		if err != nil {
-			// Drop datagrams that are not parseable
-			log.Println(err)
+			log.Println("Failed to read command:", err)
 			continue
 		}
-
-		// If new client is joining, add and subscribe
-		nm.Pubsub.Subscribe(PubSubTopicBasic, addr)
-
-		if err = nm.Commands.Handle(cmd); err != nil {
-			log.Fatalln(err)
+		cmd.Source = cSrc
+		ack, err := nm.BrokerServer.ReceiveCommand(cmd)
+		if err != nil {
+			log.Println("Failed to execute command:", err)
+			continue
 		}
+		go nm.SendClient(conn, ack)
 	}
 }
 
-func (nm *NetworkMgr) safeIterateCb(client *UdpClient) {
+func (nm *NetworkMgr) SendClient(conn net.Conn, message proto.Message) {
+	_, err := protodelim.MarshalTo(conn, message)
+	if err != nil {
+		log.Println("Failed to marshal message:", err)
+	}
+}
 
+// Broadcast publishes a Command to the PubSubTopicBasic topic.
+func (nm *NetworkMgr) Broadcast(com *messages.Command) {
+	nm.Pubsub.Publish(PubSubTopicBasic, com)
 }
 
 func (nm *NetworkMgr) Publish() {
 	for !nm.Pubsub.closed {
-		// Try to Lock to wait if no subs here
-		for _, clients := range nm.Pubsub.subs {
-			clients.Range(func(k interface{}, c interface{}) bool {
-				client := c.(*UdpClient)
-				select {
-				case msg := <-client.Chan:
-					//log.Printf("Sending to %v\n", client.Addr.String())
-					_, err := nm.conn.WriteToUDP(msg, client.Addr)
-					if err != nil {
-						log.Printf("Error sending to UDP Client %s: %v", client.Addr, err)
+		select {
+		case <-nm.Pubsub.HasMessages:
+			for _, clients := range nm.Pubsub.subs {
+				clients.Range(func(k interface{}, c interface{}) bool {
+					client := c.(*RemoteClient)
+					select {
+					case msg := <-client.Chan:
+						_, err := protodelim.MarshalTo(client.Client, msg)
+						if err != nil {
+							log.Printf("Error sending to Client %s: %v", client.Client.RemoteAddr().String(), err)
+						}
+					default:
 					}
-				default:
-				}
-				return true
-			})
+					return true
+				})
+			}
 		}
 	}
 }

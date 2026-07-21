@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/joho/godotenv"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"viveSyncBroker/empatica"
+
+	"github.com/joho/godotenv"
 )
 
 var (
@@ -20,10 +20,6 @@ func main() {
 	}
 	setupLogger()
 	netmgr = NewNetworkMgr()
-	if os.Getenv("E4_ACTIVE") == "true" {
-		empatica.Setup(netmgr.Persist)
-	}
-	RegisterCommands()
 	if err := netmgr.Connect(); err != nil {
 		log.Fatal(err)
 	}

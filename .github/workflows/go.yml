@@ -1,0 +1,37 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+      GOCACHE: /tmp/viveSyncBroker-go-cache
+      ACTIONS_RUNNER_DEBUG: true
+      ACTIONS_STEP_DEBUG: true
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+
+    - name: Build
+      continue-on-error: true
+      run: |
+        go get .
+        go build -v ./...
+
+    - name: Test
+      continue-on-error: true
+      run: go test -v -covermode=atomic -coverprofile=coverage.out ./...

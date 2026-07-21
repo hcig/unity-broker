@@ -31,15 +31,18 @@ func (gh *GzHandler) cleanup() {
 // Pack gzips a message and returns the resulting byte slice
 func (gh *GzHandler) Pack(data []byte) ([]byte, error) {
 	gh.mu.Lock()
-	defer gh.cleanup()
 	_, err := gh.gw.Write(data)
 	if err != nil {
+		gh.cleanup()
 		return nil, err
 	}
-	if err = gh.gw.Flush(); err != nil {
+	if err = gh.gw.Close(); err != nil {
+		gh.cleanup()
 		return nil, err
 	}
-	return gh.writeBuffer.Bytes(), nil
+	result := append([]byte(nil), gh.writeBuffer.Bytes()...)
+	gh.cleanup()
+	return result, nil
 }
 
 // Unpack unzips a message using gzip and returns the plain message as byte slice.
