@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"google.golang.org/protobuf/proto"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,13 +12,15 @@ import (
 	"sync"
 	"time"
 	"viveSyncBroker/lib"
+
+	"google.golang.org/protobuf/proto"
 )
 
 const StudyPrefix = "study"
 
 // FileHandler represents a handler to persist Command to a CSV file.
 type FileHandler struct {
-	paused         *sync.WaitGroup
+	paused         *sync.Mutex
 	prefix         string
 	participantNum int
 	passNum        int
@@ -30,7 +31,7 @@ type FileHandler struct {
 // NewFileHandler creates a new PersistenceHandler and creates persistence files
 func NewFileHandler() *FileHandler {
 	ph := &FileHandler{
-		paused: &sync.WaitGroup{},
+		paused: &sync.Mutex{},
 	}
 	return ph
 }
@@ -76,7 +77,8 @@ func (ph *FileHandler) LastParticipant() (int, error) {
 		return 0, err
 	}
 	for _, f := range files {
-		part, err := strconv.Atoi(strings.Split(f, "_")[0])
+		partName := strings.Split(strings.TrimSuffix(filepath.Base(f), ".txt"), "_")[0]
+		part, err := strconv.Atoi(partName)
 		if err != nil {
 			return 0, err
 		}
@@ -107,9 +109,13 @@ func (ph *FileHandler) LastTrial() (int, error) {
 		return 0, err
 	}
 	for _, f := range files {
-		part, err := strconv.Atoi(strings.Split(f, "_")[1])
+		parts := strings.Split(strings.TrimSuffix(filepath.Base(f), ".txt"), "_")
+		if len(parts) < 2 {
+			return 0, fmt.Errorf("invalid trial filename: %s", f)
+		}
+		part, err := strconv.Atoi(parts[1])
 		if err != nil {
-			return 0, err
+			continue
 		}
 		trialSet.Add(part)
 	}
@@ -122,7 +128,8 @@ func (ph *FileHandler) LastTrial() (int, error) {
 
 // restart closes the old storage file and open a new one
 func (ph *FileHandler) restart() error {
-	ph.paused.Add(1)
+	ph.paused.Lock()
+	defer ph.paused.Unlock()
 	// Close old file
 	if err := ph.closeFile(); err != nil {
 		return err
@@ -131,7 +138,6 @@ func (ph *FileHandler) restart() error {
 	if err := ph.openFile(); err != nil {
 		return err
 	}
-	ph.paused.Done()
 	return nil
 }
 
@@ -165,15 +171,17 @@ func (ph *FileHandler) openFile() error {
 
 // closeFile closes the writers to the persistence file.
 func (ph *FileHandler) closeFile() error {
-	close(ph.writeChan)
 	return ph.fileHandle.Close()
 }
 
 // persistRoutine reads from the persistence channel and writes to the file
 func (ph *FileHandler) persistRoutine() {
 	for {
-		ph.paused.Wait()
-		buf := <-ph.writeChan
+		ph.paused.TryLock()
+		buf, ok := <-ph.writeChan
+		if !ok {
+			return
+		}
 		msg, err := json.Marshal(buf)
 		if err != nil {
 			log.Println(err)
@@ -181,6 +189,7 @@ func (ph *FileHandler) persistRoutine() {
 		if _, err = ph.fileHandle.Write(msg); err != nil {
 			fmt.Println(err)
 		}
+		ph.paused.Unlock()
 	}
 }
 

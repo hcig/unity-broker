@@ -72,8 +72,8 @@ func ParticipantsHandler(writer http.ResponseWriter, request *http.Request) {
 		}
 		writer.WriteHeader(http.StatusCreated)
 	default:
-		_, _ = writer.Write([]byte("Method not implemented"))
 		writer.WriteHeader(http.StatusNotImplemented)
+		_, _ = writer.Write([]byte("Method not implemented"))
 		return
 	}
 }
@@ -135,8 +135,8 @@ func TrialsHandler(writer http.ResponseWriter, request *http.Request) {
 		}
 		writer.WriteHeader(http.StatusCreated)
 	default:
-		_, _ = writer.Write([]byte("Method not implemented"))
 		writer.WriteHeader(http.StatusNotImplemented)
+		_, _ = writer.Write([]byte("Method not implemented"))
 		return
 	}
 }

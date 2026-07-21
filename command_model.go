@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"viveSyncBroker/pb"
+
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // ParseCommand unpacks a json string command to a Command.

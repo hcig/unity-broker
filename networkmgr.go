@@ -3,9 +3,6 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
-	"github.com/gorilla/mux"
-	"google.golang.org/protobuf/encoding/protodelim"
-	"google.golang.org/protobuf/proto"
 	"io"
 	"log"
 	"net"
@@ -14,6 +11,10 @@ import (
 	"strconv"
 	messages "viveSyncBroker/pb"
 	"viveSyncBroker/persistence"
+
+	"github.com/gorilla/mux"
+	"google.golang.org/protobuf/encoding/protodelim"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
