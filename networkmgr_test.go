@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -156,4 +157,70 @@ func (e *errorWriteConn) Write(p []byte) (int, error) { return 0, errors.New("wr
 func TestSendClientErrorBranch(t *testing.T) {
 	nm := &NetworkMgr{}
 	nm.SendClient(&errorWriteConn{}, &messages.Command{})
+}
+
+func TestNetworkMgrPublishLoop(t *testing.T) {
+	nm := &NetworkMgr{Pubsub: NewPubsub(nil)}
+	client := newMemoryConn("client-1", nil)
+	nm.Pubsub.Subscribe(PubSubTopicBasic, client)
+
+	done := make(chan struct{})
+	go func() {
+		nm.Publish()
+		close(done)
+	}()
+
+	nm.Broadcast(&messages.Command{Timestamp: timestamppb.Now()})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(client.WrittenBytes()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("Publish did not write the message to the client")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	nm.Pubsub.Close()
+	nm.Pubsub.HasMessages <- true
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Publish did not exit after close")
+	}
+}
+
+type errorOnceConn struct {
+	addr   string
+	failed bool
+}
+
+func (c *errorOnceConn) Read(p []byte) (int, error) {
+	if !c.failed {
+		c.failed = true
+		return 0, errors.New("transient read error")
+	}
+	return 0, io.EOF
+}
+
+func (c *errorOnceConn) Write(p []byte) (int, error)      { return 0, nil }
+func (c *errorOnceConn) Close() error                     { return nil }
+func (c *errorOnceConn) LocalAddr() net.Addr              { return stubAddr("local") }
+func (c *errorOnceConn) RemoteAddr() net.Addr             { return stubAddr(c.addr) }
+func (c *errorOnceConn) SetDeadline(time.Time) error      { return nil }
+func (c *errorOnceConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *errorOnceConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestListenClientReadErrorThenEOF(t *testing.T) {
+	nm := &NetworkMgr{Pubsub: NewPubsub(nil)}
+	conn := &errorOnceConn{addr: "client-err"}
+	done := make(chan struct{})
+	go func() {
+		nm.ListenClient(conn)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("ListenClient did not return after read error followed by EOF")
+	}
 }

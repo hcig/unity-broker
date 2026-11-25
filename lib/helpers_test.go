@@ -18,3 +18,10 @@ func TestCoalesceWithPointers(t *testing.T) {
 		t.Fatalf("Coalesce = %#v", got)
 	}
 }
+
+func TestCoalesceAllNilReturnsFirst(t *testing.T) {
+	var a, b *string
+	if got := Coalesce(a, b); got != a {
+		t.Fatalf("Coalesce = %#v, want first (nil) param", got)
+	}
+}

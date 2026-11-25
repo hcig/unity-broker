@@ -1,8 +1,23 @@
 package main
 
 import (
+	"compress/gzip"
+	"errors"
 	"testing"
 )
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestGzHandlerPackWriteErrorBranch(t *testing.T) {
+	gh := &GzHandler{}
+	gh.Setup()
+	gh.gw = gzip.NewWriter(failingWriter{err: errors.New("write failed")})
+	if _, err := gh.Pack([]byte("payload")); err == nil {
+		t.Fatal("expected Pack to fail when the underlying writer fails")
+	}
+}
 
 func TestGzHandlerPackAndUnpack(t *testing.T) {
 	var gh GzHandler

@@ -81,6 +81,27 @@ func TestRegisterCommands(t *testing.T) {
 	}
 }
 
+func TestEchoCommandPersistenceErrorBranch(t *testing.T) {
+	fake := &fakeHandler{addEntryErr: errors.New("boom")}
+	nm := &NetworkMgr{
+		Pubsub:       NewPubsub(nil),
+		Persist:      fake,
+		BrokerServer: NewBrokerServer(nil),
+	}
+	restore := withNetMgr(nm)
+	defer restore()
+
+	if err := EchoCommand(&messages.Command{Source: "src", Payload: &messages.Payload{}}); err == nil {
+		t.Fatal("EchoCommand should surface persistence error")
+	}
+	if err := UpdateCommand(&messages.Command{Source: "src", Payload: &messages.Payload{}}); err == nil {
+		t.Fatal("UpdateCommand should surface persistence error")
+	}
+	if err := MsgCommand(&messages.Command{Source: "src", Payload: &messages.Payload{}}); err == nil {
+		t.Fatal("MsgCommand should surface persistence error")
+	}
+}
+
 func TestGetCommandHelpAndClients(t *testing.T) {
 	fake := &fakeHandler{}
 	nm := &NetworkMgr{

@@ -39,6 +39,72 @@ func TestFileHandlerCreateFilenameWithParticipantAndTrial(t *testing.T) {
 	}
 }
 
+func TestFileHandlerNotImplementedMethods(t *testing.T) {
+	h := NewFileHandler()
+	if err := h.AddParticipantData(map[string]any{"a": 1}); err == nil {
+		t.Fatal("expected AddParticipantData to be not implemented")
+	}
+	if err := h.SaveQuestionnaire("kind", []byte("x")); err == nil {
+		t.Fatal("expected SaveQuestionnaire to be not implemented")
+	}
+	if err := h.AddTrialData(map[string]any{"a": 1}); err == nil {
+		t.Fatal("expected AddTrialData to be not implemented")
+	}
+}
+
+func TestFileHandlerInitErrorWhenFolderMissing(t *testing.T) {
+	t.Setenv("PERSIST_FOLDER", filepath.Join(t.TempDir(), "missing"))
+	h := NewFileHandler()
+	if err := h.Init(); err == nil {
+		t.Fatal("expected Init to fail for a missing persistence folder")
+	}
+}
+
+func TestFileHandlerInitAndAddEntry(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PERSIST_FOLDER", dir)
+
+	h := NewFileHandler()
+	if err := h.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := h.AddEntry("id-1", &timestamppb.Timestamp{}); err != nil {
+		t.Fatalf("AddEntry: %v", err)
+	}
+	if err := h.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+func TestFileHandlerLastTrialInvalidFileContinues(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PERSIST_FOLDER", dir)
+	if err := os.WriteFile(filepath.Join(dir, "1_bad.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	h := NewFileHandler()
+	h.participantNum = 1
+	got, err := h.LastTrial()
+	if err != nil {
+		t.Fatalf("LastTrial: %v", err)
+	}
+	if got != 0 {
+		t.Fatalf("LastTrial = %d, want 0", got)
+	}
+}
+
+func TestFileHandlerLastParticipantInvalidName(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PERSIST_FOLDER", dir)
+	if err := os.WriteFile(filepath.Join(dir, "bad.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	h := NewFileHandler()
+	if _, err := h.LastParticipant(); err == nil {
+		t.Fatal("expected LastParticipant to fail for an invalid participant name")
+	}
+}
+
 func TestFileHandlerLastParticipantAndTrial(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PERSIST_FOLDER", dir)
